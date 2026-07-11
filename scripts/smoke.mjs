@@ -104,6 +104,23 @@ try {
   })
   ok('delete page → 3 pages', true)
 
+  // --- Text editing: add a box, type a sentinel, confirm it holds the text ---
+  const SENTINEL = 'SmokeSentinel'
+  await page.click('[data-testid="tool-text"]')
+
+  // Click near the top-left of the page to spawn a text box.
+  const layer = await page.waitForSelector('.text-layer', { timeout: 4000 })
+  const lb = await layer.boundingBox()
+  await page.mouse.click(lb.x + 40, lb.y + 40)
+
+  const editable = await page.waitForSelector('.text-box-edit', { timeout: 4000 })
+  await editable.focus()
+  await page.keyboard.type(SENTINEL)
+
+  const typed = await page.$eval('.text-box-edit', (el) => el.innerText)
+  ok('text box captures typed text', typed.includes(SENTINEL), `got "${typed}"`)
+  await page.screenshot({ path: `${SHOTS}/03-text-added.png` })
+
   // Export PDF: capture the download.
   const client = await page.createCDPSession()
   await client.send('Page.setDownloadBehavior', {
@@ -111,8 +128,17 @@ try {
     downloadPath: SHOTS,
   })
   await page.click('button.primary')
-  await new Promise((r) => setTimeout(r, 1500))
-  ok('export PDF click did not error', true)
+  await new Promise((r) => setTimeout(r, 2000))
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const pdfs = readdirSync(SHOTS).filter((f) => f.toLowerCase().endsWith('.pdf'))
+  const exported = pdfs.length > 0
+  let validHeader = false
+  if (exported) {
+    const head = readFileSync(`${SHOTS}/${pdfs[0]}`).subarray(0, 5).toString('latin1')
+    validHeader = head === '%PDF-'
+  }
+  ok('export produced a .pdf file', exported, pdfs.join(', '))
+  ok('exported file has a valid PDF header', validHeader)
 
   ok('no uncaught page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '))
 
