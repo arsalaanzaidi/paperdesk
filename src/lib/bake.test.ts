@@ -19,7 +19,7 @@ async function extractText(bytes: Uint8Array): Promise<string> {
   const doc = await pdfjs.getDocument({ data: bytes, useWorkerFetch: false, isEvalSupported: false }).promise
   const page = await doc.getPage(1)
   const content = await page.getTextContent()
-  return content.items.map((i: { str?: string }) => i.str ?? '').join(' ')
+  return content.items.map((i) => ('str' in i ? i.str : '')).join(' ')
 }
 
 describe('wrapLines', () => {
