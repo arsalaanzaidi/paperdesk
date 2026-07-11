@@ -7,6 +7,7 @@ export default function Toast() {
 
   useEffect(() => {
     if (!error) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pairs with the timeout below, not a prop mirror
     setShown(error)
     const t = setTimeout(() => {
       setShown(null)
