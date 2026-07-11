@@ -113,8 +113,9 @@ try {
   const lb = await layer.boundingBox()
   await page.mouse.click(lb.x + 40, lb.y + 40)
 
+  // No explicit .focus() here: the click above must leave the caret ready to
+  // type on its own (one-click-to-type), proving the new box auto-focuses itself.
   const editable = await page.waitForSelector('.text-box-edit', { timeout: 4000 })
-  await editable.focus()
   await page.keyboard.type(SENTINEL)
 
   const typed = await page.$eval('.text-box-edit', (el) => el.innerText)

@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import { boxToScreen, pxToPt, type TextBox } from '../lib/overlay'
 
@@ -16,8 +16,28 @@ export default function TextLayer({ wPx, hPx }: Props) {
   const { overlays, currentPage, zoom, tool, selectedBoxId, addTextBox, updateTextBox, selectBox } =
     usePdfStore()
   const layerRef = useRef<HTMLDivElement>(null)
+  const editRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const pageIndex = currentPage - 1
   const boxes = overlays.filter((b) => b.page === pageIndex)
+
+  useEffect(() => {
+    if (!selectedBoxId) return
+    const box = boxes.find((b) => b.id === selectedBoxId)
+    if (!box || box.text !== '') return
+    // Defer past this event loop turn: the pointerdown that creates a box is
+    // immediately followed, in the SAME native gesture, by a `mousedown`
+    // hit-tested against the pre-click DOM (the empty layer, an ancestor of
+    // the box we're about to focus). Focusing synchronously here — even from
+    // an effect — still runs before that `mousedown` is dispatched, so it
+    // would blur straight back off and, since the box is still empty,
+    // trigger the blur handler to delete it. Deferring one tick lets the
+    // whole click gesture (mousedown/pointerup/mouseup/click) finish first.
+    const t = setTimeout(() => {
+      const el = editRefs.current.get(selectedBoxId)
+      if (el && document.activeElement !== el) el.focus()
+    }, 0)
+    return () => clearTimeout(t)
+  }, [selectedBoxId, boxes])
 
   function onLayerPointerDown(e: React.PointerEvent) {
     if (e.target !== layerRef.current) return // a box (child) was clicked
@@ -97,9 +117,10 @@ export default function TextLayer({ wPx, hPx }: Props) {
               }}
               // Sync external text in only when not focused, to avoid caret jumps.
               ref={(el) => {
-                if (el && document.activeElement !== el && el.innerText !== box.text) {
-                  el.innerText = box.text
-                }
+                if (el) editRefs.current.set(box.id, el)
+                else editRefs.current.delete(box.id)
+                if (!el || document.activeElement === el) return
+                if (el.innerText !== box.text) el.innerText = box.text
               }}
               onInput={(e) => updateTextBox(box.id, { text: (e.target as HTMLElement).innerText })}
               onBlur={(e) => {
