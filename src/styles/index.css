@@ -613,7 +613,10 @@ button {
   height: 100%;
   outline: none;
   white-space: pre-wrap;
-  overflow: hidden;
+  /* Visible, not hidden: bake draws every wrapped line with no hPt bound, so
+     clipping here would hide a line in the editor that still appears in the
+     exported PDF. Staying visible keeps the editor WYSIWYG with export. */
+  overflow: visible;
   line-height: 1.15;
 }
 
