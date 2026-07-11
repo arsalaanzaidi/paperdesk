@@ -41,4 +41,11 @@ describe('overlay actions', () => {
     usePdfStore.getState().setTool('text')
     expect(usePdfStore.getState().tool).toBe('text')
   })
+
+  it('setCurrentPage clears the current selection', () => {
+    usePdfStore.setState({ numPages: 3 })
+    usePdfStore.getState().addTextBox(base)
+    usePdfStore.getState().setCurrentPage(2)
+    expect(usePdfStore.getState().selectedBoxId).toBeNull()
+  })
 })

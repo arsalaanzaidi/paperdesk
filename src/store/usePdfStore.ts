@@ -113,7 +113,7 @@ export const usePdfStore = create<PdfState>((set, get) => {
 
     setCurrentPage(n) {
       const { numPages } = get()
-      set({ currentPage: Math.min(Math.max(1, n), numPages || 1) })
+      set({ currentPage: Math.min(Math.max(1, n), numPages || 1), selectedBoxId: null })
     },
 
     setZoom(z) {
