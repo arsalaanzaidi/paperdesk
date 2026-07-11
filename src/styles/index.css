@@ -407,6 +407,7 @@ button {
 .page-controls {
   position: sticky;
   bottom: 16px;
+  z-index: 5;
   margin-top: 24px;
   display: flex;
   align-items: center;
