@@ -7,6 +7,14 @@ import {
   movePage,
   download,
 } from '../lib/pdf'
+import {
+  type TextBox,
+  nextId,
+  remapAfterInsert,
+  remapAfterDelete,
+  remapAfterReorder,
+} from '../lib/overlay'
+import { bakeOverlays } from '../lib/bake'
 
 interface PdfState {
   bytes: Uint8Array | null
@@ -22,13 +30,22 @@ interface PdfState {
   busy: boolean
   error: string | null
 
+  tool: 'select' | 'text'
+  overlays: TextBox[]
+  selectedBoxId: string | null
+
   loadFile: (file: File) => Promise<void>
   setCurrentPage: (n: number) => void
   setZoom: (z: number) => void
+  setTool: (t: 'select' | 'text') => void
+  addTextBox: (box: Omit<TextBox, 'id'>) => void
+  updateTextBox: (id: string, patch: Partial<TextBox>) => void
+  removeTextBox: (id: string) => void
+  selectBox: (id: string | null) => void
   addBlankPage: (afterOneBased: number) => Promise<void>
   removePage: (oneBased: number) => Promise<void>
   reorderPage: (fromOneBased: number, toOneBased: number) => Promise<void>
-  exportPdf: () => void
+  exportPdf: () => Promise<void>
   reset: () => void
 }
 
@@ -65,6 +82,10 @@ export const usePdfStore = create<PdfState>((set, get) => {
     busy: false,
     error: null,
 
+    tool: 'select',
+    overlays: [],
+    selectedBoxId: null,
+
     async loadFile(file) {
       const isPdf =
         file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
@@ -99,6 +120,32 @@ export const usePdfStore = create<PdfState>((set, get) => {
       set({ zoom: Math.min(Math.max(0.5, z), 2) })
     },
 
+    setTool(tool) {
+      set({ tool })
+    },
+
+    addTextBox(box) {
+      const id = nextId()
+      set((s) => ({ overlays: [...s.overlays, { ...box, id }], selectedBoxId: id }))
+    },
+
+    updateTextBox(id, patch) {
+      set((s) => ({
+        overlays: s.overlays.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+      }))
+    },
+
+    removeTextBox(id) {
+      set((s) => ({
+        overlays: s.overlays.filter((b) => b.id !== id),
+        selectedBoxId: s.selectedBoxId === id ? null : s.selectedBoxId,
+      }))
+    },
+
+    selectBox(id) {
+      set({ selectedBoxId: id })
+    },
+
     async addBlankPage(afterOneBased) {
       const { bytes } = get()
       if (!bytes) return
@@ -106,6 +153,7 @@ export const usePdfStore = create<PdfState>((set, get) => {
       try {
         const next = await insertBlankPage(bytes, afterOneBased) // insert after = at index
         await applyBytes(next, afterOneBased + 1)
+        set((s) => ({ overlays: remapAfterInsert(s.overlays, afterOneBased) }))
         set({ status: 'Blank page added' })
       } catch (e) {
         set({ error: (e as Error).message })
@@ -125,6 +173,7 @@ export const usePdfStore = create<PdfState>((set, get) => {
       try {
         const next = await deletePage(bytes, oneBased - 1)
         await applyBytes(next, Math.min(oneBased, numPages - 1))
+        set((s) => ({ overlays: remapAfterDelete(s.overlays, oneBased - 1) }))
         set({ status: 'Page deleted' })
       } catch (e) {
         set({ error: (e as Error).message })
@@ -138,8 +187,12 @@ export const usePdfStore = create<PdfState>((set, get) => {
       if (!bytes || fromOneBased === toOneBased) return
       set({ busy: true, status: 'Reordering…', error: null })
       try {
+        const count = get().numPages
         const next = await movePage(bytes, fromOneBased - 1, toOneBased - 1)
         await applyBytes(next, toOneBased)
+        set((s) => ({
+          overlays: remapAfterReorder(s.overlays, fromOneBased - 1, toOneBased - 1, count),
+        }))
         set({ status: 'Pages reordered' })
       } catch (e) {
         set({ error: (e as Error).message })
@@ -148,12 +201,20 @@ export const usePdfStore = create<PdfState>((set, get) => {
       }
     },
 
-    exportPdf() {
-      const { bytes, fileName } = get()
+    async exportPdf() {
+      const { bytes, fileName, overlays } = get()
       if (!bytes) return
-      const base = (fileName ?? 'document').replace(/\.pdf$/i, '')
-      download(bytes, `${base}-edited.pdf`)
-      set({ status: 'Exported PDF' })
+      set({ busy: true, status: 'Exporting…', error: null })
+      try {
+        const out = await bakeOverlays(bytes, overlays)
+        const base = (fileName ?? 'document').replace(/\.pdf$/i, '')
+        download(out, `${base}-edited.pdf`)
+        set({ status: 'Exported PDF' })
+      } catch (e) {
+        set({ error: `Export failed: ${(e as Error).message}` })
+      } finally {
+        set({ busy: false })
+      }
     },
 
     reset() {
@@ -169,6 +230,9 @@ export const usePdfStore = create<PdfState>((set, get) => {
         fileSize: 0,
         status: 'Ready',
         error: null,
+        tool: 'select',
+        overlays: [],
+        selectedBoxId: null,
       })
     },
   }
