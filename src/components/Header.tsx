@@ -10,7 +10,8 @@ function formatSize(bytes: number): string {
 
 export default function Header() {
   const inputRef = useRef<HTMLInputElement>(null)
-  const { doc, fileName, fileSize, currentPage, loadFile, exportPdf, busy } = usePdfStore()
+  const { doc, fileName, fileSize, currentPage, loadFile, exportPdf, busy, tool, setTool } =
+    usePdfStore()
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -55,6 +56,14 @@ export default function Header() {
 
       {doc && (
         <>
+          <button
+            className={`btn${tool === 'text' ? ' active' : ''}`}
+            data-testid="tool-text"
+            onClick={() => setTool(tool === 'text' ? 'select' : 'text')}
+            disabled={busy}
+          >
+            ＋ Add text
+          </button>
           <button className="btn" onClick={exportPng} disabled={busy}>
             Save page PNG
           </button>

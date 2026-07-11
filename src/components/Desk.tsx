@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import { renderPage } from '../lib/pdf'
+import TextLayer from './TextLayer'
+import TextToolbar from './TextToolbar'
 
 /** Recognise common trim sizes so the readout reads like a print spec. */
 function trimLabel(wPt: number, hPt: number): string {
@@ -39,8 +41,10 @@ export default function Desk() {
 
   return (
     <div className="desk">
+      <TextToolbar />
       <div className="page-sheet">
         <canvas ref={canvasRef} />
+        {dims && <TextLayer wPx={dims.w * zoom} hPx={dims.h * zoom} />}
       </div>
 
       <div className="page-controls" role="toolbar" aria-label="Page controls">
