@@ -122,6 +122,84 @@ try {
   ok('text box captures typed text', typed.includes(SENTINEL), `got "${typed}"`)
   await page.screenshot({ path: `${SHOTS}/03-text-added.png` })
 
+  // --- Edit existing text: click a known run, replace it, check dedup ---
+  const EDIT_SENTINEL = 'EditSentinel'
+  const ORIGINAL = 'The quick brown fox'
+
+  // Go to page 1 (every non-blank page of the sample PDF has the sentence).
+  while (
+    await page.$eval('.page-controls .readout', (el) => !el.textContent.trim().startsWith('1 /'))
+  ) {
+    await page.click('button[aria-label="Previous page"]')
+  }
+
+  await page.click('[data-testid="tool-edit"]')
+  await page.waitForSelector('.text-layer[data-text-items]:not([data-text-items="0"])', {
+    timeout: 6000,
+  })
+  ok('edit tool loads text items for the page', true)
+
+  // The text toolbar appears above the page when a box is selected and shifts
+  // the sheet down, so re-read the layer's position right before every click.
+  const clickRunAt = async (xPt, yPt) => {
+    const lb2 = await (await page.$('.text-layer')).boundingBox()
+    const zoom = lb2.width / 595.28
+    await page.mouse.click(lb2.x + xPt * zoom, lb2.y + yPt * zoom)
+  }
+  const boxesBefore = await page.$$eval('.text-box', (els) => els.length)
+  await clickRunAt(108, 158) // inside the sentence run
+
+  await page.waitForFunction(
+    (orig) => [...document.querySelectorAll('.text-box-edit')].some((e) => e.innerText.includes(orig)),
+    { timeout: 4000 },
+    ORIGINAL,
+  )
+  ok('edit click spawns a box prefilled with the original run', true)
+
+  // Require the focused element to be the edit box itself: document.body's
+  // innerText also contains the original sentence, so a bare innerText check
+  // passes vacuously while nothing is focused yet.
+  const autoFocused = await page.waitForFunction(
+    (orig) => {
+      const a = document.activeElement
+      return !!a && a.classList.contains('text-box-edit') && a.innerText.includes(orig)
+    },
+    { timeout: 2000 },
+    ORIGINAL,
+  ).then(() => true, () => false)
+  ok('edit box is focused without an extra click', autoFocused)
+
+  const coverBg = await page.$$eval(
+    '.text-box-edit',
+    (els, orig) => {
+      const e = els.find((x) => x.innerText.includes(orig))
+      return e ? getComputedStyle(e).backgroundColor : ''
+    },
+    ORIGINAL,
+  )
+  ok('edit box carries the sampled cover colour (white page)', coverBg === 'rgb(255, 255, 255)', coverBg)
+
+  // Replace the whole run with the sentinel.
+  await page.evaluate(() => document.execCommand('selectAll'))
+  await page.keyboard.type(EDIT_SENTINEL)
+  const edited = await page.evaluate(() => document.activeElement?.innerText ?? '')
+  ok('edit box holds the replacement text', edited === EDIT_SENTINEL, `got "${edited}"`)
+  await page.screenshot({ path: `${SHOTS}/04-text-edited.png` })
+
+  // Repeat click on the same spot must select, not stack a duplicate.
+  // Deselect first (click blank page area: no hit → selection cleared), so the
+  // repeat click has to land on the edited run to reselect it.
+  await clickRunAt(300, 500)
+  await new Promise((r) => setTimeout(r, 200))
+  const deselected = await page.$$eval('.text-box.selected', (els) => els.length === 0)
+  ok('blank-area click clears the selection before the repeat click', deselected)
+  await clickRunAt(108, 158)
+  await new Promise((r) => setTimeout(r, 200))
+  const boxesAfter = await page.$$eval('.text-box', (els) => els.length)
+  ok('repeat click does not duplicate the edit box', boxesAfter === boxesBefore + 1, `${boxesBefore} → ${boxesAfter}`)
+  const selectedText = await page.$eval('.text-box.selected .text-box-edit', (e) => e.innerText).catch(() => '')
+  ok('repeat click selects the edited run', selectedText === EDIT_SENTINEL, `got "${selectedText}"`)
+
   // Export PDF: capture the download.
   const client = await page.createCDPSession()
   await client.send('Page.setDownloadBehavior', {
@@ -140,6 +218,19 @@ try {
   }
   ok('export produced a .pdf file', exported, pdfs.join(', '))
   ok('exported file has a valid PDF header', validHeader)
+
+  if (exported) {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const data = new Uint8Array(readFileSync(`${SHOTS}/${pdfs[0]}`))
+    const out = await pdfjs.getDocument({ data, useWorkerFetch: false, isEvalSupported: false }).promise
+    let allText = ''
+    for (let n = 1; n <= out.numPages; n++) {
+      const c = await (await out.getPage(n)).getTextContent()
+      allText += c.items.map((i) => ('str' in i ? i.str : '')).join(' ') + '\n'
+    }
+    ok('exported PDF text contains the added-text sentinel', allText.includes(SENTINEL))
+    ok('exported PDF text contains the edit sentinel', allText.includes(EDIT_SENTINEL))
+  }
 
   ok('no uncaught page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '))
 
