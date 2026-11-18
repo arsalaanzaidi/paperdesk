@@ -44,7 +44,7 @@ export default function Desk() {
       <TextToolbar />
       <div className="page-sheet">
         <canvas ref={canvasRef} />
-        {dims && <TextLayer wPx={dims.w * zoom} hPx={dims.h * zoom} />}
+        {dims && <TextLayer wPx={dims.w * zoom} hPx={dims.h * zoom} canvasRef={canvasRef} />}
       </div>
 
       <div className="page-controls" role="toolbar" aria-label="Page controls">

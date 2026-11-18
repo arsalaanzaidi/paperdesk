@@ -64,6 +64,15 @@ export default function Header() {
           >
             ＋ Add text
           </button>
+          <button
+            className={`btn${tool === 'edit' ? ' active' : ''}`}
+            data-testid="tool-edit"
+            onClick={() => setTool(tool === 'edit' ? 'select' : 'edit')}
+            disabled={busy}
+            title="Covers and replaces existing text visually — the original text is not removed from the file and can still be extracted by other tools."
+          >
+            ✎ Edit text
+          </button>
           <button className="btn" onClick={exportPng} disabled={busy}>
             Save page PNG
           </button>

@@ -1,10 +1,22 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
-import { boxToScreen, pxToPt, type TextBox } from '../lib/overlay'
+import {
+  boxToScreen,
+  pxToPt,
+  coverSamplePoint,
+  sampleColorAt,
+  contrastText,
+  WHITE,
+  type TextBox,
+} from '../lib/overlay'
+import { getPageTextItems } from '../lib/pdf'
+import { hitTest, findBoxAt, type PageTextItem } from '../lib/textItems'
 
 interface Props {
   wPx: number
   hPx: number
+  /** The page canvas, read only to sample one background pixel for an edit-box's cover. */
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
 }
 
 const DEFAULT_SIZE_PT = 16
@@ -12,18 +24,60 @@ const DEFAULT_SIZE_PT = 16
 const cssFamily = (f: TextBox['family']) =>
   f === 'serif' ? 'serif' : f === 'mono' ? 'monospace' : 'sans-serif'
 
-export default function TextLayer({ wPx, hPx }: Props) {
-  const { overlays, currentPage, zoom, tool, selectedBoxId, addTextBox, updateTextBox, selectBox } =
-    usePdfStore()
+/** Background colour just left of a run, read from the rendered page canvas. */
+function sampleCover(canvas: HTMLCanvasElement | null, item: PageTextItem, zoom: number): string {
+  if (!canvas || !canvas.clientWidth) return WHITE
+  const pt = coverSamplePoint(item, zoom, canvas.width / canvas.clientWidth, canvas.width, canvas.height)
+  const ctx = pt ? canvas.getContext('2d') : null
+  return pt && ctx ? sampleColorAt(ctx, pt.x, pt.y) : WHITE
+}
+
+export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
+  const {
+    doc,
+    docVersion,
+    overlays,
+    currentPage,
+    zoom,
+    tool,
+    selectedBoxId,
+    addTextBox,
+    updateTextBox,
+    selectBox,
+  } = usePdfStore()
   const layerRef = useRef<HTMLDivElement>(null)
   const editRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  /** Set when the edit tool spawns a prefilled box, so the focus effect also focuses non-empty boxes. */
+  const focusNext = useRef(false)
   const pageIndex = currentPage - 1
   const boxes = overlays.filter((b) => b.page === pageIndex)
+
+  // Text runs for the current page, fetched only while the edit tool is active.
+  // Keyed rather than cleared, so the effect never calls setState synchronously.
+  const itemsKey = doc && tool === 'edit' ? `${docVersion}:${pageIndex}` : null
+  const [itemsCache, setItemsCache] = useState<{ key: string; items: PageTextItem[] } | null>(null)
+  const itemsReady = itemsKey !== null && itemsCache?.key === itemsKey
+  const items = itemsReady && itemsCache ? itemsCache.items : []
+
+  useEffect(() => {
+    if (!doc || !itemsKey) return
+    let cancelled = false
+    getPageTextItems(doc, pageIndex + 1)
+      .then((found) => {
+        if (!cancelled) setItemsCache({ key: itemsKey, items: found })
+      })
+      .catch(() => {
+        if (!cancelled) setItemsCache({ key: itemsKey, items: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [doc, itemsKey, pageIndex])
 
   useEffect(() => {
     if (!selectedBoxId) return
     const box = boxes.find((b) => b.id === selectedBoxId)
-    if (!box || box.text !== '') return
+    if (!box || (box.text !== '' && !focusNext.current)) return
     // Defer past this event loop turn: the pointerdown that creates a box is
     // immediately followed, in the SAME native gesture, by a `mousedown`
     // hit-tested against the pre-click DOM (the empty layer, an ancestor of
@@ -33,23 +87,33 @@ export default function TextLayer({ wPx, hPx }: Props) {
     // trigger the blur handler to delete it. Deferring one tick lets the
     // whole click gesture (mousedown/pointerup/mouseup/click) finish first.
     const t = setTimeout(() => {
+      focusNext.current = false
       const el = editRefs.current.get(selectedBoxId)
-      if (el && document.activeElement !== el) el.focus()
+      if (!el || document.activeElement === el) return
+      el.focus()
+      // Caret at the end, so typing into a prefilled edit-box appends rather than
+      // landing at offset 0.
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      range.collapse(false)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
     }, 0)
     return () => clearTimeout(t)
   }, [selectedBoxId, boxes])
 
-  function onLayerPointerDown(e: React.PointerEvent) {
-    if (e.target !== layerRef.current) return // a box (child) was clicked
-    if (tool !== 'text') {
-      selectBox(null)
-      return
-    }
+  function pointerPt(e: React.PointerEvent) {
     const rect = layerRef.current!.getBoundingClientRect()
+    return { xPt: pxToPt(e.clientX - rect.left, zoom), yPt: pxToPt(e.clientY - rect.top, zoom) }
+  }
+
+  function addAtPointer(e: React.PointerEvent) {
+    const { xPt, yPt } = pointerPt(e)
     addTextBox({
       page: pageIndex,
-      xPt: pxToPt(e.clientX - rect.left, zoom),
-      yPt: pxToPt(e.clientY - rect.top, zoom),
+      xPt,
+      yPt,
       wPt: 160,
       hPt: DEFAULT_SIZE_PT * 1.6,
       text: '',
@@ -59,6 +123,43 @@ export default function TextLayer({ wPx, hPx }: Props) {
       bold: false,
       italic: false,
     })
+  }
+
+  function editAtPointer(e: React.PointerEvent) {
+    const { xPt, yPt } = pointerPt(e)
+    const hit = hitTest(items, xPt, yPt)
+    if (!hit) {
+      selectBox(null) // nothing under the click: spawn nothing
+      return
+    }
+    const existing = findBoxAt(boxes, hit)
+    if (existing) {
+      selectBox(existing.id) // repeat click on an already-edited run: no duplicate
+      return
+    }
+    const coverColor = sampleCover(canvasRef.current, hit, zoom)
+    focusNext.current = true
+    addTextBox({
+      page: pageIndex,
+      xPt: hit.xPt,
+      yPt: hit.yPt,
+      wPt: hit.wPt,
+      hPt: hit.hPt,
+      text: hit.str,
+      family: hit.family,
+      sizePt: hit.sizePt,
+      color: contrastText(coverColor),
+      bold: hit.bold,
+      italic: hit.italic,
+      coverColor,
+    })
+  }
+
+  function onLayerPointerDown(e: React.PointerEvent) {
+    if (e.target !== layerRef.current) return // a box (child) was clicked
+    if (tool === 'text') addAtPointer(e)
+    else if (tool === 'edit') editAtPointer(e)
+    else selectBox(null)
   }
 
   function drag(box: TextBox, e: React.PointerEvent, mode: 'move' | 'resize') {
@@ -80,11 +181,14 @@ export default function TextLayer({ wPx, hPx }: Props) {
     window.addEventListener('pointerup', up)
   }
 
+  const modeClass = tool === 'text' ? ' adding' : tool === 'edit' ? ' editing' : ''
+
   return (
     <div
       ref={layerRef}
-      className={`text-layer${tool === 'text' ? ' adding' : ''}`}
+      className={`text-layer${modeClass}`}
       data-testid="text-layer"
+      data-text-items={itemsReady ? items.length : undefined}
       style={{ width: wPx, height: hPx }}
       onPointerDown={onLayerPointerDown}
     >
@@ -114,6 +218,8 @@ export default function TextLayer({ wPx, hPx }: Props) {
                 color: box.color,
                 fontWeight: box.bold ? 700 : 400,
                 fontStyle: box.italic ? 'italic' : 'normal',
+                // Edit-boxes hide the original glyphs in the editor too, matching export.
+                background: box.coverColor,
               }}
               // Sync external text in only when not focused, to avoid caret jumps.
               ref={(el) => {
