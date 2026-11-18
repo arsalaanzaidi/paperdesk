@@ -12,6 +12,11 @@ import {
   firstBaselineY,
   standardFont,
   parseHexColor,
+  rgbToHex,
+  coverSamplePoint,
+  sampleColorAt,
+  contrastText,
+  WHITE,
 } from './overlay'
 
 const box = (page: number): TextBox => ({
@@ -75,5 +80,58 @@ describe('parseHexColor', () => {
   })
   it('falls back to black on bad input', () => {
     expect(parseHexColor('nonsense')).toEqual({ r: 0, g: 0, b: 0 })
+  })
+})
+
+describe('rgbToHex', () => {
+  it('formats 0-255 channels as uppercase #RRGGBB', () => {
+    expect(rgbToHex(255, 0, 0)).toBe('#FF0000')
+    expect(rgbToHex(10, 20, 30)).toBe('#0A141E')
+  })
+  it('round-trips through parseHexColor', () => {
+    const { r, g, b } = parseHexColor(rgbToHex(59, 74, 224))
+    expect([r, g, b].map((v) => Math.round(v * 255))).toEqual([59, 74, 224])
+  })
+})
+
+describe('coverSamplePoint', () => {
+  it('samples 3 css px left of the run, vertically centred, in device pixels', () => {
+    // xCss = 48*1 - 3 = 45, yCss = (100 + 20/2)*1 = 110; pxPerCss 2 → (90, 220)
+    expect(coverSamplePoint({ xPt: 48, yPt: 100, hPt: 20 }, 1, 2, 1200, 1600)).toEqual({ x: 90, y: 220 })
+  })
+  it('clamps to the canvas bounds', () => {
+    expect(coverSamplePoint({ xPt: 0, yPt: 5000, hPt: 20 }, 1, 1, 600, 800)).toEqual({ x: 0, y: 799 })
+  })
+  it('returns null for an empty canvas', () => {
+    expect(coverSamplePoint({ xPt: 48, yPt: 100, hPt: 20 }, 1, 1, 0, 0)).toBeNull()
+  })
+})
+
+describe('sampleColorAt', () => {
+  const ctxOf = (rgba: number[]) =>
+    ({ getImageData: () => ({ data: new Uint8ClampedArray(rgba) }) }) as unknown as Pick<
+      CanvasRenderingContext2D,
+      'getImageData'
+    >
+  it('reads one pixel as hex', () => {
+    expect(sampleColorAt(ctxOf([59, 74, 224, 255]), 0, 0)).toBe('#3B4AE0')
+  })
+  it('treats a fully transparent pixel as white', () => {
+    expect(sampleColorAt(ctxOf([0, 0, 0, 0]), 0, 0)).toBe(WHITE)
+  })
+  it('falls back to white when the read throws', () => {
+    const bad = {
+      getImageData: () => {
+        throw new Error('nope')
+      },
+    } as unknown as Pick<CanvasRenderingContext2D, 'getImageData'>
+    expect(sampleColorAt(bad, 0, 0)).toBe(WHITE)
+  })
+})
+
+describe('contrastText', () => {
+  it('uses white text on dark covers and near-black on light ones', () => {
+    expect(contrastText('#3B4AE0')).toBe('#FFFFFF')
+    expect(contrastText('#FFFFFF')).toBe('#111111')
   })
 })

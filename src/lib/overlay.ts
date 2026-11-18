@@ -15,6 +15,9 @@ export interface TextBox {
   color: string // hex
   bold: boolean
   italic: boolean
+  /** Edit-boxes only: hex fill drawn at the box bounds before the text at bake time.
+   *  Visual cover only — the original glyphs stay in the file (not redaction). */
+  coverColor?: string
 }
 
 let _idCounter = 0
@@ -114,4 +117,54 @@ export function parseHexColor(hex: string): Rgb01 {
   if (h.length === 3) h = h.split('').map((c) => c + c).join('')
   const n = parseInt(h, 16)
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 }
+}
+
+export const WHITE = '#FFFFFF'
+
+/** 0-255 channels → uppercase #RRGGBB. Inverse of parseHexColor (×255). */
+export function rgbToHex(r: number, g: number, b: number): string {
+  const ch = (v: number) => Math.min(255, Math.max(0, Math.round(v))).toString(16).padStart(2, '0')
+  return `#${ch(r)}${ch(g)}${ch(b)}`.toUpperCase()
+}
+
+/** CSS px left of the run where the background is sampled. */
+export const COVER_SAMPLE_OFFSET_PX = 3
+
+/**
+ * Device-pixel point just left of a run, vertically centred, clamped to the canvas.
+ * pxPerCss = canvas.width / canvas.clientWidth (renderPage scales by devicePixelRatio).
+ */
+export function coverSamplePoint(
+  rect: { xPt: number; yPt: number; hPt: number },
+  zoom: number,
+  pxPerCss: number,
+  canvasW: number,
+  canvasH: number,
+): { x: number; y: number } | null {
+  if (canvasW <= 0 || canvasH <= 0) return null
+  const xCss = rect.xPt * zoom - COVER_SAMPLE_OFFSET_PX
+  const yCss = (rect.yPt + rect.hPt / 2) * zoom
+  const clamp = (v: number, size: number) => Math.min(Math.max(0, Math.round(v)), size - 1)
+  return { x: clamp(xCss * pxPerCss, canvasW), y: clamp(yCss * pxPerCss, canvasH) }
+}
+
+/** One canvas pixel → hex. White if unreadable or fully transparent (unpainted). */
+export function sampleColorAt(
+  ctx: Pick<CanvasRenderingContext2D, 'getImageData'>,
+  xPx: number,
+  yPx: number,
+): string {
+  try {
+    const d = ctx.getImageData(xPx, yPx, 1, 1).data
+    if (d[3] === 0) return WHITE
+    return rgbToHex(d[0], d[1], d[2])
+  } catch {
+    return WHITE
+  }
+}
+
+/** Readable default text colour for a replacement run drawn on `hex`. */
+export function contrastText(hex: string): string {
+  const { r, g, b } = parseHexColor(hex)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5 ? '#FFFFFF' : '#111111'
 }

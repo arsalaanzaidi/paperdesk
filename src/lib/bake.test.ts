@@ -22,6 +22,11 @@ async function extractText(bytes: Uint8Array): Promise<string> {
   return content.items.map((i) => ('str' in i ? i.str : '')).join(' ')
 }
 
+async function page1Ops(bytes: Uint8Array) {
+  const doc = await pdfjs.getDocument({ data: bytes, useWorkerFetch: false, isEvalSupported: false }).promise
+  return (await doc.getPage(1)).getOperatorList()
+}
+
 describe('wrapLines', () => {
   it('splits on explicit newlines', async () => {
     const doc = await PDFDocument.create()
@@ -55,5 +60,37 @@ describe('bakeOverlays', () => {
     ])
     const reloaded = await PDFDocument.load(out)
     expect(reloaded.getPageCount()).toBe(1)
+  })
+
+  it('draws the cover rectangle before the text when coverColor is set', async () => {
+    // boxWith: xPt 50, yPt 50, hPt 200 on an 800pt page → rect origin y = 800 - 50 - 200 = 550
+    const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('Covered'), coverColor: '#FF0000' }])
+    const { fnArray, argsArray } = await page1Ops(out)
+    const fillIdx = fnArray.findIndex(
+      (f, i) =>
+        f === pdfjs.OPS.setFillRGBColor &&
+        Array.from(argsArray[i] as ArrayLike<number>).join() === '255,0,0',
+    )
+    const rectIdx = fnArray.findIndex(
+      (f, i) => f === pdfjs.OPS.transform && (argsArray[i] as number[]).join() === '1,0,0,1,50,550',
+    )
+    const textIdx = fnArray.indexOf(pdfjs.OPS.showText)
+    expect(fillIdx).toBeGreaterThanOrEqual(0)
+    expect(rectIdx).toBeGreaterThan(fillIdx)
+    expect(fnArray.indexOf(pdfjs.OPS.constructPath)).toBeGreaterThan(rectIdx)
+    expect(textIdx).toBeGreaterThan(rectIdx)
+  })
+
+  it('draws no rectangle for boxes without coverColor (Phase-1 output unchanged)', async () => {
+    const out = await bakeOverlays(await blankPdf(), [boxWith('Plain')])
+    const { fnArray } = await page1Ops(out)
+    expect(fnArray).not.toContain(pdfjs.OPS.constructPath)
+    expect(fnArray).toContain(pdfjs.OPS.showText)
+  })
+
+  it('draws no cover for an edit-box whose text was emptied', async () => {
+    const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('  '), coverColor: '#FF0000' }])
+    const { fnArray } = await page1Ops(out)
+    expect(fnArray).not.toContain(pdfjs.OPS.constructPath)
   })
 })

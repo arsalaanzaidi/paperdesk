@@ -45,8 +45,22 @@ export async function bakeOverlays(bytes: Uint8Array, boxes: TextBox[]): Promise
       fontCache.set(fontName, font)
     }
 
-    const { r, g, b } = parseHexColor(box.color)
     const pageHeight = page.getHeight()
+
+    // Edit-boxes: paint over the original glyphs first, then draw the new text on top.
+    // Visual cover only — the original text stays in the content stream.
+    if (box.coverColor) {
+      const c = parseHexColor(box.coverColor)
+      page.drawRectangle({
+        x: box.xPt,
+        y: pageHeight - box.yPt - box.hPt,
+        width: box.wPt,
+        height: box.hPt,
+        color: rgb(c.r, c.g, c.b),
+      })
+    }
+
+    const { r, g, b } = parseHexColor(box.color)
     const lineHeight = box.sizePt * LINE_HEIGHT_RATIO
     let y = firstBaselineY(pageHeight, box.yPt, box.sizePt)
 
