@@ -16,6 +16,8 @@ import {
 } from '../lib/overlay'
 import { bakeOverlays } from '../lib/bake'
 
+export type Tool = 'select' | 'text' | 'edit'
+
 interface PdfState {
   bytes: Uint8Array | null
   doc: PDFDocumentProxy | null
@@ -30,14 +32,14 @@ interface PdfState {
   busy: boolean
   error: string | null
 
-  tool: 'select' | 'text'
+  tool: Tool
   overlays: TextBox[]
   selectedBoxId: string | null
 
   loadFile: (file: File) => Promise<void>
   setCurrentPage: (n: number) => void
   setZoom: (z: number) => void
-  setTool: (t: 'select' | 'text') => void
+  setTool: (t: Tool) => void
   addTextBox: (box: Omit<TextBox, 'id'>) => void
   updateTextBox: (id: string, patch: Partial<TextBox>) => void
   removeTextBox: (id: string) => void

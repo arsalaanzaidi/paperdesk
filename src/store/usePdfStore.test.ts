@@ -172,3 +172,12 @@ describe('exportPdf', () => {
     expect(usePdfStore.getState().bytes).toBe(sourceBytes)
   })
 })
+
+describe('tool', () => {
+  it("accepts the 'edit' tool and reset returns to 'select'", () => {
+    usePdfStore.getState().setTool('edit')
+    expect(usePdfStore.getState().tool).toBe('edit')
+    usePdfStore.getState().reset()
+    expect(usePdfStore.getState().tool).toBe('select')
+  })
+})
