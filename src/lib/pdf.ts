@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { PDFDocument } from 'pdf-lib'
+import { extractTextItems, type PageTextItem } from './textItems'
 // Vite resolves this to a hashed URL for the worker bundle.
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -65,6 +66,14 @@ export async function renderPageToBlob(
       quality,
     )
   })
+}
+
+/** Clickable text runs on a page (1-based), in top-left pt space. Read-only. */
+export async function getPageTextItems(
+  doc: PDFDocumentProxy,
+  pageNumber: number,
+): Promise<PageTextItem[]> {
+  return extractTextItems(await doc.getPage(pageNumber))
 }
 
 // --- Mutations (operate on bytes, return new bytes) ---
