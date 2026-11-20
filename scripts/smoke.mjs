@@ -600,6 +600,21 @@ try {
     JSON.stringify({ focusOnItem, ...afterEscape }),
   )
 
+  // Turning the phone (or widening the window) past the 720px breakpoint hides the open menu. It
+  // must close then, rather than pop back open over the page when the screen narrows again.
+  const frames = () => phone.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+  await phone.tap(MENU).catch(() => {})
+  const openBeforeTurn = await phone.evaluate(menuOpen)
+  await phone.setViewport({ width: 844, height: 390, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })
+  await frames()
+  await phone.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })
+  await frames()
+  ok(
+    'phone: turning past the 720px breakpoint closes the open menu',
+    openBeforeTurn && !(await phone.evaluate(menuOpen)),
+    `open before turning: ${openBeforeTurn}`,
+  )
+
   // A long file name with no spaces used to widen the page past the screen: the status bar's
   // "Loaded <name>" can't wrap, and the grid column grew to fit it. Wait for that status, not the
   // file chip: the chip shows the new name before the file has loaded, while the status still says

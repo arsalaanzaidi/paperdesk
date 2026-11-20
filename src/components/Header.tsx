@@ -11,6 +11,9 @@ function formatSize(bytes: number): string {
 const EDIT_TEXT_TITLE =
   'Covers and replaces existing text visually — the original text is not removed from the file and can still be extracted by other tools.'
 
+/** The phone layout. Keep in step with `@media (max-width: 720px)` in index.css. */
+const NARROW = '(max-width: 720px)'
+
 export default function Header() {
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -19,7 +22,9 @@ export default function Header() {
   const { doc, fileName, fileSize, currentPage, loadFile, exportPdf, busy, tool, setTool } =
     usePdfStore()
 
-  // Escape closes the phone menu. A tap outside it lands on the backdrop, which closes it too.
+  // Escape closes the phone menu. So does the layout widening past phone size (turning the phone,
+  // resizing the window), which hides the menu: left open, it would pop back up later. A tap
+  // outside the menu lands on the backdrop, which closes it too.
   useEffect(() => {
     if (!menuOpen) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -27,8 +32,16 @@ export default function Header() {
       setMenuOpen(false)
       menuButtonRef.current?.focus()
     }
+    const narrow = window.matchMedia(NARROW)
+    const onWiden = () => {
+      if (!narrow.matches) setMenuOpen(false)
+    }
     document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    narrow.addEventListener('change', onWiden)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      narrow.removeEventListener('change', onWiden)
+    }
   }, [menuOpen])
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
