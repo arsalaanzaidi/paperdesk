@@ -69,7 +69,8 @@ export default function Header() {
     <header className="header">
       <div className="brand">
         <span className="mark">◆</span>
-        <span className="brand-name">paperdesk</span>
+        {/* Phones drop the name only once a PDF is open and the header fills up. */}
+        <span className={doc ? 'wide-only' : undefined}>paperdesk</span>
       </div>
 
       {fileName && (

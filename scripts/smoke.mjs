@@ -352,6 +352,9 @@ try {
   )
   await phone.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })
   await phone.goto(URL, { waitUntil: 'networkidle0' })
+  // Before a PDF is open there is room for the name: only the document actions crowd it out.
+  const landingBrand = await phone.$eval('.brand', (el) => el.innerText.trim())
+  ok('phone: the landing screen shows the paperdesk name', landingBrand.includes('paperdesk'), `"${landingBrand}"`)
   await (await phone.waitForSelector('input[type=file]')).uploadFile(PDF)
   await phone.waitForFunction(() => document.querySelectorAll('canvas').length > 0, { timeout: 8000 })
   // Header actions: on desktop all five are labelled buttons; on phones only Export PDF and a

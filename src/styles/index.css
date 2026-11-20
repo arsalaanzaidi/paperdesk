@@ -685,7 +685,6 @@ button {
     gap: 8px;
     padding: 8px 12px;
   }
-  .brand-name,
   .wide-only {
     display: none;
   }
