@@ -10,6 +10,7 @@ import {
   boxToScreen,
   pxToPt,
   firstBaselineY,
+  baselineShiftPx,
   standardFont,
   parseHexColor,
   rgbToHex,
@@ -60,6 +61,19 @@ describe('coordinate helpers', () => {
   it('firstBaselineY flips origin and drops by ascent', () => {
     // 800 - 20 - 16*0.8 = 767.2
     expect(firstBaselineY(800, 20, 16)).toBeCloseTo(767.2)
+  })
+})
+
+describe('baselineShiftPx', () => {
+  it('moves editor text up when CSS puts the baseline lower than bake (0.8 em)', () => {
+    // Arial-like metrics: ascent 0.905 + half-leading gives 0.9234 em at line-height 1.15.
+    expect(baselineShiftPx(0.9234, 10.83)).toBeCloseTo(-1.3367, 3)
+  })
+  it('moves it down when CSS puts the baseline higher', () => {
+    expect(baselineShiftPx(0.7, 10)).toBeCloseTo(1, 6)
+  })
+  it('leaves it alone when CSS already matches', () => {
+    expect(baselineShiftPx(0.8, 12)).toBeCloseTo(0, 6)
   })
 })
 

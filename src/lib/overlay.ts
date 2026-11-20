@@ -77,6 +77,15 @@ export const ASCENT_RATIO = 0.8
 export const LINE_HEIGHT_RATIO = 1.15
 
 /** pdf-lib baseline (bottom-left origin) for the first line of a top-anchored box. */
+/**
+ * Vertical shift (CSS px) that moves editor text from where CSS put its baseline (`cssRatio` em
+ * below the line top, which depends on the font's ascent and descent) to where bake draws it
+ * (ASCENT_RATIO em). Negative moves it up.
+ */
+export function baselineShiftPx(cssRatio: number, fontPx: number): number {
+  return (ASCENT_RATIO - cssRatio) * fontPx
+}
+
 export function firstBaselineY(pageHeightPt: number, yPt: number, sizePt: number): number {
   return pageHeightPt - yPt - sizePt * ASCENT_RATIO
 }

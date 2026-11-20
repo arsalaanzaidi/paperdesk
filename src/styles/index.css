@@ -604,10 +604,12 @@ button {
 
 .text-box {
   position: absolute;
-  box-sizing: border-box;
-  border: 1px solid transparent;
+  /* An outline, not a border: a border takes layout space and pushes the editor's text 1px down
+     and right of where bake draws it. The cover (this box's background) spans the whole run box. */
+  outline: 1px solid transparent;
+  outline-offset: -1px;
 }
-.text-box.selected { border-color: #4c8bf5; }
+.text-box.selected { outline-color: #4c8bf5; }
 
 .text-box-edit {
   width: 100%;

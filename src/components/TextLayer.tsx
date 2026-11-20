@@ -6,6 +6,9 @@ import {
   coverSampleRegion,
   sampleCoverColor,
   contrastText,
+  baselineShiftPx,
+  ASCENT_RATIO,
+  LINE_HEIGHT_RATIO,
   WHITE,
   type TextBox,
 } from '../lib/overlay'
@@ -23,6 +26,35 @@ const DEFAULT_SIZE_PT = 16
 
 const cssFamily = (f: TextBox['family']) =>
   f === 'serif' ? 'serif' : f === 'mono' ? 'monospace' : 'sans-serif'
+
+const baselineCache = new Map<string, number>()
+
+/**
+ * Where the browser puts the first baseline for this font at this size, in em below the top of a
+ * line box with line-height LINE_HEIGHT_RATIO (as .text-box-edit uses). It depends on the font's
+ * ascent and descent, and Chrome snaps it to whole pixels, so the ratio changes with size: it is
+ * measured at the real pixel size and cached per font and size. Generic system families are ready
+ * synchronously; a web font would need re-measuring once it has loaded.
+ */
+function cssBaselineRatio(family: string, weight: number, style: string, fontPx: number): number {
+  const key = `${family}|${weight}|${style}|${fontPx.toFixed(2)}`
+  const cached = baselineCache.get(key)
+  if (cached !== undefined) return cached
+  const host = document.createElement('div')
+  host.style.cssText =
+    'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;' +
+    `font:${style} ${weight} ${fontPx}px/${LINE_HEIGHT_RATIO} ${family}`
+  host.textContent = 'Hg'
+  const mark = document.createElement('span')
+  mark.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline'
+  host.appendChild(mark)
+  document.body.appendChild(host)
+  const ratio = (mark.getBoundingClientRect().top - host.getBoundingClientRect().top) / fontPx
+  host.remove()
+  const result = Number.isFinite(ratio) && ratio > 0 ? ratio : ASCENT_RATIO
+  baselineCache.set(key, result)
+  return result
+}
 
 /** Dominant background colour around a run, read from the rendered page canvas. */
 function sampleCover(canvas: HTMLCanvasElement | null, item: PageTextItem, zoom: number): string {
@@ -200,7 +232,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
             key={box.id}
             className={`text-box${selected ? ' selected' : ''}`}
             // Edit-boxes hide the original glyphs in the editor too, matching export. The cover is
-            // painted on this box, not the inner editor, so it also fills the 1px border ring.
+            // painted on this box, not the inner editor, so it spans the whole run box.
             style={{ left: r.left, top: r.top, width: r.width, height: r.height, background: box.coverColor }}
             onPointerDown={(e) => {
               e.stopPropagation()
@@ -220,6 +252,16 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
                 color: box.color,
                 fontWeight: box.bold ? 700 : 400,
                 fontStyle: box.italic ? 'italic' : 'normal',
+                // Put the baseline where bake draws it, whatever this font's CSS metrics are.
+                transform: `translateY(${baselineShiftPx(
+                  cssBaselineRatio(
+                    cssFamily(box.family),
+                    box.bold ? 700 : 400,
+                    box.italic ? 'italic' : 'normal',
+                    box.sizePt * zoom,
+                  ),
+                  box.sizePt * zoom,
+                )}px)`,
               }}
               // Sync external text in only when not focused, to avoid caret jumps.
               ref={(el) => {

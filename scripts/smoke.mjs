@@ -189,9 +189,9 @@ try {
   ).then(() => true, () => false)
   ok('edit box is focused without an extra click', autoFocused)
 
-  // The outer .text-box is the run box, with a 1px transparent border (blue when
-  // selected). A cover painted only on the inner editor leaves a 1px ring where
-  // the original glyph tops show through, so the outer box must paint it.
+  // The outer .text-box is the run box; its selection frame is an outline, which
+  // takes no space. A cover painted only on the inner editor would leave a ring
+  // where the original glyph tops show through, so the outer box must paint it.
   const cover = await page.$$eval(
     '.text-box-edit',
     (els, orig) => {
@@ -207,7 +207,7 @@ try {
   const coverBg = cover && (cover.boxBg !== TRANSPARENT ? cover.boxBg : cover.editBg)
   ok('edit box carries the sampled cover colour (white page)', coverBg === 'rgb(255, 255, 255)', coverBg)
   ok(
-    'cover paints the whole run box, border ring included',
+    'cover paints the whole run box',
     !!cover && cover.boxBg === coverBg && cover.clip === 'border-box',
     JSON.stringify(cover),
   )
@@ -222,6 +222,41 @@ try {
     ORIGINAL,
   )
   ok("edit box keeps the original run's text colour", textColor === 'rgb(38, 38, 38)', textColor)
+
+  // Bake draws the text with its baseline ASCENT_RATIO (0.8) em below the run box's top and its
+  // pen at the box's left edge. CSS puts the baseline at the font's own ascent plus half the
+  // leading, so measure where Chrome really renders it, on a hidden clone of the box.
+  const place = await page.$$eval(
+    '.text-box-edit',
+    (els, orig) => {
+      const edit = els.find((x) => x.innerText.includes(orig))
+      const box = edit?.closest('.text-box')
+      if (!box) return null
+      const clone = box.cloneNode(true)
+      clone.style.visibility = 'hidden'
+      box.parentElement.appendChild(clone)
+      const cEdit = clone.querySelector('.text-box-edit')
+      const probe = document.createElement('span')
+      probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline'
+      cEdit.appendChild(probe)
+      const range = document.createRange()
+      range.selectNodeContents(cEdit.firstChild)
+      const b = clone.getBoundingClientRect()
+      const fontPx = parseFloat(getComputedStyle(cEdit).fontSize)
+      const out = {
+        dy: +(probe.getBoundingClientRect().top - (b.top + 0.8 * fontPx)).toFixed(2),
+        dx: +(range.getClientRects()[0].left - b.left).toFixed(2),
+      }
+      clone.remove()
+      return out
+    },
+    ORIGINAL,
+  )
+  ok(
+    'edit box text sits on the run baseline and left edge, where bake draws it',
+    !!place && Math.abs(place.dy) <= 0.3 && Math.abs(place.dx) <= 0.3,
+    JSON.stringify(place),
+  )
 
   // Replace the whole run with the sentinel.
   await page.evaluate(() => document.execCommand('selectAll'))
