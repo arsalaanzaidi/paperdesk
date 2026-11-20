@@ -7,7 +7,7 @@ export default function StatusBar() {
   return (
     <footer className="statusbar">
       <span className={dotClass} aria-hidden />
-      <span>{error ?? status}</span>
+      <span className="status-text">{error ?? status}</span>
       <span className="spacer" />
       {doc && (
         <span className="privacy" title="All processing happens locally in your browser">

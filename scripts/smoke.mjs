@@ -563,6 +563,41 @@ try {
   )
   ok('phone: Escape closes the menu and returns focus to ☰', !afterEscape.menuOpen && afterEscape.focusOnMenuButton, JSON.stringify(afterEscape))
 
+  // A long file name with no spaces used to widen the page past the screen: the status bar's
+  // "Loaded <name>" can't wrap, and the grid column grew to fit it. Wait for that status, not the
+  // file chip: the chip shows the new name before the file has loaded, while the status still says
+  // "Loading…", and a check made then passes without the fix.
+  const { copyFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const longPdf = `${tmpdir()}/Quarterly_Financial_Report_FY2026_Final_Version_Signed.pdf`
+  copyFileSync(PDF, longPdf)
+  await (await phone.$('input[type=file]')).uploadFile(longPdf)
+  const longLoaded = await phone
+    .waitForFunction(() => document.querySelector('.statusbar')?.textContent.includes('Loaded Quarterly_'), { timeout: 8000 })
+    .then(() => true, () => false)
+  const longName = await phone.evaluate(() => {
+    const vw = document.documentElement.clientWidth
+    const on = (sel) => {
+      const r = document.querySelector(sel).getBoundingClientRect()
+      return r.left >= 0 && r.right <= vw
+    }
+    const range = document.createRange()
+    range.selectNodeContents(document.querySelector('.filechip .mono'))
+    return {
+      screen: vw,
+      pageWidth: document.documentElement.scrollWidth,
+      exportOnScreen: on('.header .btn.primary'),
+      menuOnScreen: on('button[aria-label="More actions"]'),
+      sizeLines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size,
+    }
+  })
+  ok(
+    'phone: a long file name without spaces still fits the screen',
+    longLoaded && longName.pageWidth <= longName.screen && longName.exportOnScreen && longName.menuOnScreen,
+    JSON.stringify({ loaded: longLoaded, ...longName }),
+  )
+  // The file chip squeezes the name, which ellipsizes, and not the size next to it.
+  ok('phone: with a long file name the file size stays on one line', longName.sizeLines === 1, `${longName.sizeLines} lines`)
   await phone.screenshot({ path: `${SHOTS}/06-phone.png` })
   await phone.close()
 

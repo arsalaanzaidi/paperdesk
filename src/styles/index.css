@@ -84,6 +84,9 @@ button {
 /* --- App shell --- */
 .app {
   display: grid;
+  /* minmax(0, 1fr), not the implicit auto column: an auto column grows to fit its widest
+     unbreakable content (a long file name in the status bar) and widens the page past a phone. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   height: 100%;
   min-height: 0;
@@ -133,6 +136,11 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ink);
+}
+
+/* The size never wraps, so a squeezed chip shortens the name (ellipsis) instead. */
+.filechip .mono {
+  white-space: nowrap;
 }
 
 .header .spacer {
@@ -595,10 +603,17 @@ button {
 }
 
 .statusbar .dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
+}
+
+/* "Loaded <file name>" can be one long word: let it shrink and break rather than overflow. */
+.statusbar .status-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .statusbar .dot.busy {
@@ -676,6 +691,10 @@ button {
   }
   .narrow-only {
     display: block;
+  }
+  /* The file chip gives way to a long name, not Export or ☰. */
+  .header .btn {
+    flex-shrink: 0;
   }
 }
 
