@@ -70,9 +70,11 @@ Reordering (`Sidebar.tsx`) is native HTML drag-and-drop tracking `dragFrom` (pag
 
 ### Git Workflow
 
-Use plain `git` for local work (branch, commit, merge). The repo has no remote yet. Do feature work on a branch, not directly on `master`.
+Use plain `git` for local work (branch, commit, merge). Do feature work on a branch, not directly on `master`.
 
-Before every commit or push, run `git config user.email` from inside the repo. It must print the personal identity (`arsalaan.z99@gmail.com`). An `includeIf` for `~/Personal Projects/` sets it. Never change the global git config: it is the work persona. If a remote is added, use the `github.com-personal` SSH host alias.
+The remote is `origin` (`git@github.com-personal:arsalaanzaidi/paperdesk.git`), a **public** repo at https://github.com/arsalaanzaidi/paperdesk, so anything pushed is published. Only `master` is pushed.
+
+Before every commit or push, run `git config user.email` from inside the repo. It must print the personal identity (`arsalaan.z99@gmail.com`). An `includeIf` for `~/Personal Projects/` sets it. Never change the global git config: it is the work persona. Push only over the `github.com-personal` SSH host alias, never the work one.
 
 ## Constraints worth knowing
 
