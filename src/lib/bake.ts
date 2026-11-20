@@ -64,7 +64,9 @@ export async function bakeOverlays(bytes: Uint8Array, boxes: TextBox[]): Promise
     const lineHeight = box.sizePt * LINE_HEIGHT_RATIO
     let y = firstBaselineY(pageHeight, box.yPt, box.sizePt)
 
-    for (const line of wrapLines(box.text, font, box.sizePt, box.wPt)) {
+    // Edit-boxes are single-line in the editor (no soft wrap), so only explicit newlines break here too.
+    const lines = box.coverColor ? box.text.split('\n') : wrapLines(box.text, font, box.sizePt, box.wPt)
+    for (const line of lines) {
       page.drawText(line, { x: box.xPt, y, size: box.sizePt, font, color: rgb(r, g, b) })
       y -= lineHeight
     }

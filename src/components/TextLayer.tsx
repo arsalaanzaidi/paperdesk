@@ -209,7 +209,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
               <span className="drag-handle" onPointerDown={(e) => drag(box, e, 'move')} />
             )}
             <div
-              className="text-box-edit"
+              className={`text-box-edit${box.coverColor ? ' cover' : ''}`}
               contentEditable
               suppressContentEditableWarning
               style={{

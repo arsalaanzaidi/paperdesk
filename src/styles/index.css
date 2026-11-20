@@ -621,6 +621,11 @@ button {
   line-height: 1.15;
 }
 
+/* Edit-boxes never soft-wrap: longer text extends right, matching bake. */
+.text-box-edit.cover {
+  white-space: pre;
+}
+
 .drag-handle {
   position: absolute;
   top: -14px;

@@ -156,6 +156,26 @@ try {
   )
   ok('edit click spawns a box prefilled with the original run', true)
 
+  // The prefilled run must render as exactly one line: a soft-wrapped last word
+  // would sit below the cover, over the page content. Count distinct line tops.
+  const lineInfo = await page.$$eval(
+    '.text-box-edit',
+    (els, orig) => {
+      const el = els.find((x) => x.innerText.includes(orig))
+      if (!el) return { lines: -1, scrollH: 0, lineH: 0 }
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      const tops = new Set([...range.getClientRects()].map((r) => Math.round(r.top)))
+      return { lines: tops.size, scrollH: el.scrollHeight, lineH: parseFloat(getComputedStyle(el).lineHeight) }
+    },
+    ORIGINAL,
+  )
+  ok(
+    'prefilled edit box renders as a single line',
+    lineInfo.lines === 1 && lineInfo.scrollH <= lineInfo.lineH + 1,
+    `lines=${lineInfo.lines} scrollHeight=${lineInfo.scrollH} lineHeight=${lineInfo.lineH}`,
+  )
+
   // Require the focused element to be the edit box itself: document.body's
   // innerText also contains the original sentence, so a bare innerText check
   // passes vacuously while nothing is focused yet.

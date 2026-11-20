@@ -88,6 +88,18 @@ describe('bakeOverlays', () => {
     expect(fnArray).toContain(pdfjs.OPS.showText)
   })
 
+  it('bakes an edit-box (coverColor) as a single line even when wider than wPt', async () => {
+    const long = { ...boxWith('The quick brown fox jumps over the lazy dog'), wPt: 60 }
+    const count = (fns: number[]) => fns.filter((f) => f === pdfjs.OPS.showText).length
+
+    const edit = await page1Ops(await bakeOverlays(await blankPdf(), [{ ...long, coverColor: '#FFFFFF' }]))
+    expect(count(edit.fnArray)).toBe(1)
+
+    // Phase-1 add-boxes (no coverColor) still wrap to wPt.
+    const add = await page1Ops(await bakeOverlays(await blankPdf(), [long]))
+    expect(count(add.fnArray)).toBeGreaterThan(1)
+  })
+
   it('draws no cover for an edit-box whose text was emptied', async () => {
     const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('  '), coverColor: '#FF0000' }])
     const { fnArray } = await page1Ops(out)
