@@ -47,8 +47,8 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
   } = usePdfStore()
   const layerRef = useRef<HTMLDivElement>(null)
   const editRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-  /** Set when the edit tool spawns a prefilled box, so the focus effect also focuses non-empty boxes. */
-  const focusNext = useRef(false)
+  /** Id of the prefilled box the edit tool just spawned, so the focus effect also focuses it although non-empty. */
+  const focusNext = useRef<string | null>(null)
   const pageIndex = currentPage - 1
   const boxes = overlays.filter((b) => b.page === pageIndex)
 
@@ -77,7 +77,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
   useEffect(() => {
     if (!selectedBoxId) return
     const box = boxes.find((b) => b.id === selectedBoxId)
-    if (!box || (box.text !== '' && !focusNext.current)) return
+    if (!box || (box.text !== '' && focusNext.current !== box.id)) return
     // Defer past this event loop turn: the pointerdown that creates a box is
     // immediately followed, in the SAME native gesture, by a `mousedown`
     // hit-tested against the pre-click DOM (the empty layer, an ancestor of
@@ -87,7 +87,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
     // trigger the blur handler to delete it. Deferring one tick lets the
     // whole click gesture (mousedown/pointerup/mouseup/click) finish first.
     const t = setTimeout(() => {
-      focusNext.current = false
+      if (focusNext.current === selectedBoxId) focusNext.current = null
       const el = editRefs.current.get(selectedBoxId)
       if (!el || document.activeElement === el) return
       el.focus()
@@ -138,7 +138,6 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       return
     }
     const coverColor = sampleCover(canvasRef.current, hit, zoom)
-    focusNext.current = true
     addTextBox({
       page: pageIndex,
       xPt: hit.xPt,
@@ -153,6 +152,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       italic: hit.italic,
       coverColor,
     })
+    focusNext.current = usePdfStore.getState().selectedBoxId // addTextBox selects the new id synchronously
   }
 
   function onLayerPointerDown(e: React.PointerEvent) {
