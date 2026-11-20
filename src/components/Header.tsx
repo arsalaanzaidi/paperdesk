@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import { renderPageToBlob, download } from '../lib/pdf'
 
@@ -8,10 +8,28 @@ function formatSize(bytes: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
+const EDIT_TEXT_TITLE =
+  'Covers and replaces existing text visually — the original text is not removed from the file and can still be extracted by other tools.'
+
 export default function Header() {
   const inputRef = useRef<HTMLInputElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const { doc, fileName, fileSize, currentPage, loadFile, exportPdf, busy, tool, setTool } =
     usePdfStore()
+
+  // Escape closes the phone menu. A tap outside it lands on the backdrop, which closes it too.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setMenuOpen(false)
+      menuButtonRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [menuOpen])
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -27,11 +45,31 @@ export default function Header() {
     usePdfStore.setState({ status: `Exported page ${currentPage} as PNG` })
   }
 
+  const openPicker = () => inputRef.current?.click()
+  const toggleTool = (t: typeof tool) => setTool(tool === t ? 'select' : t)
+  /**
+   * Close the menu and run its action. Focus goes back to ☰ first, before the chosen item
+   * unmounts. It all happens in the same tap, so iOS still lets the action open the file picker.
+   */
+  const choose = (action: () => void) => {
+    menuButtonRef.current?.focus()
+    setMenuOpen(false)
+    action()
+  }
+  /** Keyboard focus leaving the menu (Tab past the last item) closes it. */
+  const onMenuBlur = (e: React.FocusEvent) => {
+    // No relatedTarget means focus went nowhere, as when a tap lands on the backdrop. The
+    // backdrop's click closes the menu then. Closing here as well would remove the backdrop
+    // mid-tap and let the rest of the tap through to whatever is underneath.
+    const next = e.relatedTarget
+    if (next instanceof Node && !menuRef.current?.contains(next)) setMenuOpen(false)
+  }
+
   return (
     <header className="header">
       <div className="brand">
         <span className="mark">◆</span>
-        <span>paperdesk</span>
+        <span className="brand-name">paperdesk</span>
       </div>
 
       {fileName && (
@@ -50,35 +88,84 @@ export default function Header() {
         hidden
         onChange={onPickFile}
       />
-      <button className="btn ghost" onClick={() => inputRef.current?.click()} disabled={busy}>
+      {/* Phones (.wide-only hidden) show only Export PDF and the ☰ menu once a PDF is open. */}
+      <button className={`btn ghost${doc ? ' wide-only' : ''}`} onClick={openPicker} disabled={busy}>
         {doc ? 'Open another' : 'Open PDF'}
       </button>
 
       {doc && (
         <>
           <button
-            className={`btn${tool === 'text' ? ' active' : ''}`}
+            className={`btn wide-only${tool === 'text' ? ' active' : ''}`}
             data-testid="tool-text"
-            onClick={() => setTool(tool === 'text' ? 'select' : 'text')}
+            onClick={() => toggleTool('text')}
             disabled={busy}
           >
             ＋ Add text
           </button>
           <button
-            className={`btn${tool === 'edit' ? ' active' : ''}`}
+            className={`btn wide-only${tool === 'edit' ? ' active' : ''}`}
             data-testid="tool-edit"
-            onClick={() => setTool(tool === 'edit' ? 'select' : 'edit')}
+            onClick={() => toggleTool('edit')}
             disabled={busy}
-            title="Covers and replaces existing text visually — the original text is not removed from the file and can still be extracted by other tools."
+            title={EDIT_TEXT_TITLE}
           >
             ✎ Edit text
           </button>
-          <button className="btn" onClick={exportPng} disabled={busy}>
+          <button className="btn wide-only" onClick={exportPng} disabled={busy}>
             Save page PNG
           </button>
           <button className="btn primary" onClick={exportPdf} disabled={busy}>
-            ↓ Export PDF
+            {/* One flex item, so " PDF" gets a normal word space rather than the .btn gap. */}
+            <span>↓ Export<span className="wide-only"> PDF</span></span>
           </button>
+
+          {/* A disclosure, not an ARIA menu: plain buttons, aria-expanded on ☰, aria-pressed on the tools. */}
+          <div className="menu narrow-only" ref={menuRef} onBlur={onMenuBlur}>
+            <button
+              ref={menuButtonRef}
+              className={`btn menu-button${tool !== 'select' ? ' active' : ''}`}
+              aria-label="More actions"
+              aria-expanded={menuOpen}
+              aria-controls="header-menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              ☰
+            </button>
+            {/* The tap that closes the menu lands here, so it can't also act on the page. It
+                closes on click, not pointerdown: removing the backdrop mid-tap would send the
+                rest of the tap to whatever is underneath. */}
+            {menuOpen && <div className="menu-backdrop" aria-hidden="true" onClick={() => setMenuOpen(false)} />}
+            {menuOpen && (
+              <div className="menu-panel" id="header-menu">
+                <button className="menu-item" onClick={() => choose(openPicker)} disabled={busy}>
+                  Open another
+                </button>
+                <button
+                  aria-pressed={tool === 'text'}
+                  data-testid="menu-tool-text"
+                  className="menu-item"
+                  onClick={() => choose(() => toggleTool('text'))}
+                  disabled={busy}
+                >
+                  ＋ Add text
+                </button>
+                <button
+                  aria-pressed={tool === 'edit'}
+                  data-testid="menu-tool-edit"
+                  className="menu-item"
+                  onClick={() => choose(() => toggleTool('edit'))}
+                  disabled={busy}
+                  title={EDIT_TEXT_TITLE}
+                >
+                  ✎ Edit text
+                </button>
+                <button className="menu-item" onClick={() => choose(() => void exportPng())} disabled={busy}>
+                  Save page PNG
+                </button>
+              </div>
+            )}
+          </div>
         </>
       )}
     </header>

@@ -336,6 +336,211 @@ try {
     ok('exported PDF text contains the edit sentinel', allText.includes(EDIT_SENTINEL))
   }
 
+  // Phone: an iPhone-sized touch page. The header was one non-wrapping row 671px wide, which
+  // widened the whole page and pushed Export PDF off-screen. Measure against clientWidth: on an
+  // overflowing page, innerWidth grows to fit the content, so it would hide the bug.
+  const phone = await browser.newPage()
+  phone.on('pageerror', (e) => pageErrors.push(String(e)))
+  await phone.setUserAgent(
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  )
+  await phone.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })
+  await phone.goto(URL, { waitUntil: 'networkidle0' })
+  await (await phone.waitForSelector('input[type=file]')).uploadFile(PDF)
+  await phone.waitForFunction(() => document.querySelectorAll('canvas').length > 0, { timeout: 8000 })
+  // Header actions: on desktop all five are labelled buttons; on phones only Export PDF and a
+  // menu button show, and the other four live in the menu. display:none leaves no client rects.
+  const visibleActions = () =>
+    [...document.querySelectorAll('.header button')]
+      .filter((b) => b.getClientRects().length > 0)
+      .map((b) => b.getAttribute('aria-label') || b.textContent.trim())
+  const desktopActions = await page.evaluate(visibleActions)
+  ok(
+    'desktop: all five header actions are visible buttons, with no menu button',
+    desktopActions.length === 5 && !desktopActions.includes('More actions'),
+    desktopActions.join(', '),
+  )
+  const exportLabelItems = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.header button')].find((x) => /Export/.test(x.textContent))
+    return [...b.childNodes].filter((n) => n.nodeType === 1 || n.textContent.trim()).length
+  })
+  ok('desktop: the Export label is one flex item (normal word spacing)', exportLabelItems === 1, `${exportLabelItems} flex items`)
+  const phoneLayout = await phone.evaluate((visibleActionsSrc) => {
+    const vw = document.documentElement.clientWidth
+    const btn = [...document.querySelectorAll('button')].find((b) => /Export PDF/.test(b.textContent))
+    const r = btn.getBoundingClientRect()
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+    return {
+      screen: vw,
+      pageWidth: document.documentElement.scrollWidth,
+      exportOnScreen: r.left >= 0 && r.right <= vw && r.top >= 0 && r.bottom <= innerHeight,
+      exportOnTop: !!top && btn.contains(top),
+      actions: new Function(`return (${visibleActionsSrc})()`)(),
+    }
+  }, visibleActions.toString())
+  ok(
+    'phone: the header shows only Export PDF and the menu button',
+    phoneLayout.actions.length === 2 &&
+      phoneLayout.actions.includes('More actions') &&
+      phoneLayout.actions.some((a) => a.includes('Export')),
+    phoneLayout.actions.join(', '),
+  )
+  ok(
+    'phone: page is no wider than the screen',
+    phoneLayout.pageWidth <= phoneLayout.screen,
+    `${phoneLayout.pageWidth}px page on a ${phoneLayout.screen}px screen`,
+  )
+  ok(
+    'phone: Export PDF is fully on screen and nothing covers it',
+    phoneLayout.exportOnScreen && phoneLayout.exportOnTop,
+    JSON.stringify(phoneLayout),
+  )
+  const { mkdirSync } = await import('node:fs')
+  const phoneShots = `${SHOTS}/phone`
+  mkdirSync(phoneShots, { recursive: true })
+  const phoneCdp = await phone.createCDPSession()
+  await phoneCdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: phoneShots })
+  // A button off-screen makes tap() throw; record that as a failure instead of aborting the run.
+  const tapped = await phone.tap('button.primary').then(
+    () => true,
+    (e) => String(e),
+  )
+  await new Promise((r) => setTimeout(r, 2000))
+  const phonePdfs = readdirSync(phoneShots).filter((f) => f.toLowerCase().endsWith('.pdf'))
+  ok(
+    'phone: tapping Export PDF downloads the file',
+    tapped === true && phonePdfs.length > 0,
+    tapped === true ? phonePdfs.join(', ') : tapped,
+  )
+
+  // The ☰ menu is a disclosure: plain buttons, aria-expanded on ☰, aria-pressed on the two tools.
+  const MENU = 'button[aria-label="More actions"]'
+  const menuOpen = () => !!document.querySelector('#header-menu')
+  const focusOnMenuButton = () => document.activeElement === document.querySelector('button[aria-label="More actions"]')
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+  const onPhonePage = (xPt, yPt) =>
+    phone.evaluate((x, y) => {
+      const r = document.querySelector('.text-layer').getBoundingClientRect()
+      return { x: r.left + x, y: r.top + y }
+    }, xPt, yPt)
+
+  const heights = await phone.evaluate(() => {
+    const h = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().height)
+    return { menu: h('button[aria-label="More actions"]'), exportButton: h('.header .btn.primary') }
+  })
+  ok('phone: ☰ is as tall as Export', Math.abs(heights.menu - heights.exportButton) <= 1, JSON.stringify(heights))
+
+  await phone.tap(MENU).catch(() => {})
+  const menuState = await phone.evaluate(() => ({
+    items: [...document.querySelectorAll('#header-menu button')].map((b) => ({
+      name: b.textContent.trim(),
+      pressed: b.getAttribute('aria-pressed'),
+    })),
+    expanded: document.querySelector('button[aria-label="More actions"]').getAttribute('aria-expanded'),
+    roleMenu: !!document.querySelector('[role="menu"], [role^="menuitem"]'),
+  }))
+  ok(
+    'phone: the menu lists Open, Add text, Edit text and Save page PNG',
+    menuState.items.length === 4 &&
+      ['Open another', 'Add text', 'Edit text', 'Save page PNG'].every((n) => menuState.items.some((i) => i.name.includes(n))),
+    menuState.items.map((i) => i.name).join(', '),
+  )
+  ok(
+    'phone: the menu is a disclosure (aria-expanded on ☰, aria-pressed on the tools, no role=menu)',
+    menuState.expanded === 'true' && !menuState.roleMenu && menuState.items.filter((i) => i.pressed !== null).length === 2,
+    JSON.stringify(menuState),
+  )
+
+  // Add text by touch, with nothing selected and the desk at the top: the first tap used to make
+  // a box and delete it straight away.
+  await phone.tap('[data-testid="menu-tool-text"]').catch(() => {})
+  ok('phone: choosing a menu item returns focus to ☰', await phone.evaluate(focusOnMenuButton))
+  const blank = await onPhonePage(300, 300)
+  const sheetTop0 = await phone.$eval('.page-sheet', (el) => el.getBoundingClientRect().top)
+  await phone.touchscreen.tap(blank.x, blank.y)
+  await pause(300)
+  await phone.keyboard.type('PhoneSentinel')
+  await pause(300)
+  const added = await phone.evaluate(() => ({
+    boxes: document.querySelectorAll('.text-box').length,
+    text: [...document.querySelectorAll('.text-box-edit')].map((e) => e.innerText).join('|'),
+    sheetTop: document.querySelector('.page-sheet').getBoundingClientRect().top,
+  }))
+  ok(
+    'phone: tapping the page with Add text keeps the new box and takes typing',
+    added.boxes === 1 && added.text.includes('PhoneSentinel'),
+    JSON.stringify(added),
+  )
+  ok('phone: selecting a new box does not move the page', Math.abs(added.sheetTop - sheetTop0) < 0.5, `${sheetTop0} → ${added.sheetTop}`)
+
+  // A tap on a text box (its handlers stop propagation) must still close the menu. Blur ☰ first,
+  // as Safari never focuses a tapped button: in Chrome, focus moving from ☰ to the box would close
+  // the menu through focusout even if the tap went through to the box.
+  await phone.tap(MENU).catch(() => {})
+  await phone.evaluate(() => document.activeElement?.blur())
+  const boxPt = await phone.$eval('.text-box', (el) => {
+    const r = el.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  }).catch(() => null)
+  if (boxPt) await phone.touchscreen.tap(boxPt.x, boxPt.y)
+  await pause(200)
+  ok('phone: tapping a text box closes the open menu', !!boxPt && !(await phone.evaluate(menuOpen)))
+
+  await phone.tap(MENU).catch(() => {})
+  await phone.tap('[data-testid="menu-tool-edit"]').catch(() => {})
+  const afterEdit = await phone.evaluate(
+    (menuOpenSrc, focusSrc) => ({
+      menuOpen: new Function(`return (${menuOpenSrc})()`)(),
+      editing: !!document.querySelector('.text-layer.editing'),
+      menuButtonActive: !!document.querySelector('button[aria-label="More actions"].active'),
+      focusOnMenuButton: new Function(`return (${focusSrc})()`)(),
+    }),
+    menuOpen.toString(),
+    focusOnMenuButton.toString(),
+  )
+  ok(
+    'phone: choosing Edit text turns the tool on, closes the menu and marks the menu button',
+    afterEdit.editing && !afterEdit.menuOpen && afterEdit.menuButtonActive && afterEdit.focusOnMenuButton,
+    JSON.stringify(afterEdit),
+  )
+
+  // A tap that only closes the menu must not also reach the page (it used to spawn an edit-box).
+  await pause(600) // the edit tool loads the page's text runs
+  await phone.tap(MENU).catch(() => {})
+  const runPt = await onPhonePage(108, 158)
+  const phoneBoxesBefore = await phone.$$eval('.text-box', (els) => els.length)
+  await phone.touchscreen.tap(runPt.x, runPt.y)
+  await pause(300)
+  const afterDismiss = await phone.evaluate(
+    (menuOpenSrc) => ({ menuOpen: new Function(`return (${menuOpenSrc})()`)(), boxes: document.querySelectorAll('.text-box').length }),
+    menuOpen.toString(),
+  )
+  ok(
+    "phone: a tap that closes the menu doesn't also act on the page",
+    !afterDismiss.menuOpen && afterDismiss.boxes === phoneBoxesBefore,
+    `${phoneBoxesBefore} → ${afterDismiss.boxes} boxes, menuOpen=${afterDismiss.menuOpen}`,
+  )
+
+  // Keyboard: Tab past the last item closes the menu; Escape closes it and returns focus to ☰.
+  await phone.tap(MENU).catch(() => {})
+  await phone.focus(MENU)
+  for (let i = 0; i < 6; i++) await phone.keyboard.press('Tab')
+  ok('phone: tabbing out of the menu closes it', !(await phone.evaluate(menuOpen)))
+  await phone.tap(MENU).catch(() => {})
+  await phone.keyboard.press('Escape')
+  const afterEscape = await phone.evaluate(
+    (menuOpenSrc, focusSrc) => ({
+      menuOpen: new Function(`return (${menuOpenSrc})()`)(),
+      focusOnMenuButton: new Function(`return (${focusSrc})()`)(),
+    }),
+    menuOpen.toString(),
+    focusOnMenuButton.toString(),
+  )
+  ok('phone: Escape closes the menu and returns focus to ☰', !afterEscape.menuOpen && afterEscape.focusOnMenuButton, JSON.stringify(afterEscape))
+
+  await phone.screenshot({ path: `${SHOTS}/06-phone.png` })
+  await phone.close()
+
   ok('no uncaught page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '))
 
   const failed = results.filter((r) => !r.pass)

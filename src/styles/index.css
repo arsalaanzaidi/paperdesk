@@ -139,6 +139,75 @@ button {
   flex: 1;
 }
 
+/* Phone header menu: holds the actions that don't fit next to Export PDF (see Responsive). */
+.narrow-only {
+  display: none;
+}
+
+.menu {
+  position: relative;
+}
+
+/* .btn.menu-button, not .menu-button: .btn comes later and would win, leaving ☰ 3px short of Export. */
+.btn.menu-button {
+  padding: 7px 11px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Covers the whole screen under the open panel, so a tap outside the menu only closes it. */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15; /* above the text layer and page controls, below the toast */
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lift);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px; /* comfortable touch target */
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--panel);
+}
+
+.menu-item[aria-pressed='true'] {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* --- Buttons --- */
 .btn {
   display: inline-flex;
@@ -588,6 +657,18 @@ button {
   }
   .filechip .name {
     max-width: 18ch;
+  }
+  /* Phones: the five header actions don't fit, so only Export PDF and a menu with the rest show. */
+  .header {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .brand-name,
+  .wide-only {
+    display: none;
+  }
+  .narrow-only {
+    display: block;
   }
 }
 
