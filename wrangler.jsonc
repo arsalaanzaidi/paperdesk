@@ -1,0 +1,15 @@
+// Cloudflare Workers Builds deploys this on every push to master: it runs `yarn build`, then
+// `npx wrangler deploy`, which uploads dist/ as an assets-only Worker (no server code).
+{
+  "name": "paperdesk",
+  "compatibility_date": "2026-11-20",
+  "assets": {
+    "directory": "./dist",
+    // The app has no client-side routes, so anything that isn't a built file is a plain 404.
+    "not_found_handling": "none"
+  },
+  // Served only at the custom domain: no workers.dev URL and no preview URLs.
+  "routes": [{ "pattern": "paperdesk.pentaglobe.in", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
+}

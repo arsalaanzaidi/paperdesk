@@ -72,9 +72,15 @@ Reordering (`Sidebar.tsx`) is native HTML drag-and-drop tracking `dragFrom` (pag
 
 Use plain `git` for local work (branch, commit, merge). Do feature work on a branch, not directly on `master`.
 
-The remote is `origin` (`git@github.com-personal:arsalaanzaidi/paperdesk.git`), a **public** repo at https://github.com/arsalaanzaidi/paperdesk, so anything pushed is published. Only `master` is pushed.
+The remote is `origin` (`git@github.com-personal:arsalaanzaidi/paperdesk.git`), a **public** repo at https://github.com/arsalaanzaidi/paperdesk, so anything pushed is published. Only `master` is pushed, and pushing it deploys the site (see Deploy).
 
 Before every commit or push, run `git config user.email` from inside the repo. It must print the personal identity (`arsalaan.z99@gmail.com`). An `includeIf` for `~/Personal Projects/` sets it. Never change the global git config: it is the work persona. Push only over the `github.com-personal` SSH host alias, never the work one.
+
+### Deploy
+
+The app is live at https://paperdesk.pentaglobe.in/ as an assets-only Cloudflare Worker (`paperdesk`, in the personal Cloudflare account). Workers Builds deploys every push to `master`: it runs `yarn build`, then `npx wrangler deploy`, which uploads `dist/` with the settings in `wrangler.jsonc`. Those settings serve it on the custom domain only (no `workers.dev` or preview URLs), and anything that isn't a built file is a 404. `public/_headers` sends `X-Robots-Tag: noindex`; Vite copies it to the root of `dist/`, where Cloudflare reads it as config instead of serving it.
+
+Don't run `cf build`, `cf dev` or `cf deploy` in this repo. With no `cloudflare.config.ts`, `cf` runs automatic configuration, which ignores `wrangler.jsonc` and can install packages and rewrite files.
 
 ## Constraints worth knowing
 
