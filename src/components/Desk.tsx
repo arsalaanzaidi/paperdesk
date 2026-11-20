@@ -41,7 +41,10 @@ export default function Desk() {
 
   return (
     <div className="desk">
-      <TextToolbar />
+      {/* Always there, at a fixed height, so the toolbar showing up never moves the page. */}
+      <div className="text-toolbar-slot">
+        <TextToolbar />
+      </div>
       <div className="page-sheet">
         <canvas ref={canvasRef} />
         {dims && <TextLayer wPx={dims.w * zoom} hPx={dims.h * zoom} canvasRef={canvasRef} />}

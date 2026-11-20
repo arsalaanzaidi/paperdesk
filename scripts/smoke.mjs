@@ -111,11 +111,20 @@ try {
   // Click near the top-left of the page to spawn a text box.
   const layer = await page.waitForSelector('.text-layer', { timeout: 4000 })
   const lb = await layer.boundingBox()
+  const sheetTopBefore = await page.$eval('.page-sheet', (el) => el.getBoundingClientRect().top)
   await page.mouse.click(lb.x + 40, lb.y + 40)
 
   // No explicit .focus() here: the click above must leave the caret ready to
   // type on its own (one-click-to-type), proving the new box auto-focuses itself.
   const editable = await page.waitForSelector('.text-box-edit', { timeout: 4000 })
+  // The text toolbar appears when a box is selected. If it pushed the page down, a touch tap's
+  // compatibility mousedown would miss the new box, blur it and delete it.
+  const sheetTopAfter = await page.$eval('.page-sheet', (el) => el.getBoundingClientRect().top)
+  ok(
+    'selecting a new box does not move the page',
+    Math.abs(sheetTopAfter - sheetTopBefore) < 0.5,
+    `${sheetTopBefore} → ${sheetTopAfter}`,
+  )
   await page.keyboard.type(SENTINEL)
 
   const typed = await page.$eval('.text-box-edit', (el) => el.innerText)
@@ -139,8 +148,8 @@ try {
   })
   ok('edit tool loads text items for the page', true)
 
-  // The text toolbar appears above the page when a box is selected and shifts
-  // the sheet down, so re-read the layer's position right before every click.
+  // Re-read the layer's position right before every click, so nothing that moves
+  // the sheet (it used to be the text toolbar) can make a click miss.
   const clickRunAt = async (xPt, yPt) => {
     const lb2 = await (await page.$('.text-layer')).boundingBox()
     const zoom = lb2.width / 595.28

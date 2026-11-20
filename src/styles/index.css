@@ -650,11 +650,20 @@ button {
   border-radius: 2px;
 }
 
+/* Same height whether or not a box is selected. When the toolbar pushed the page down, a touch
+   tap's compatibility mousedown missed the box it had just made, blurred it, and the empty box
+   was deleted. */
+.text-toolbar-slot {
+  flex: none; /* .desk is a column flexbox shorter than the page: it would shrink an empty slot to 0 */
+  display: flex;
+  align-items: center;
+  height: 32px;
+  margin-bottom: 8px;
+}
 .text-toolbar {
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-bottom: 8px;
 }
 .text-toolbar .size { width: 56px; }
 .btn.active { background: #4c8bf5; color: #fff; }
