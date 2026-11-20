@@ -28,7 +28,11 @@ describe('download', () => {
     const revoke = vi.spyOn(URL, 'revokeObjectURL')
     download(new Uint8Array([1]), 'report-edited.pdf')
     expect(revoke).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(REVOKE_DELAY_MS - 1)
+    // A fixed floor, not just the constant: iOS starts the download only once the user has
+    // confirmed it, which can take a while, so a few seconds would not be enough.
+    vi.advanceTimersByTime(30_000)
+    expect(revoke).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(REVOKE_DELAY_MS - 30_000 - 1)
     expect(revoke).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
     expect(revoke).toHaveBeenCalledWith(anchor.href)

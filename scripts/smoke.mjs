@@ -341,6 +341,12 @@ try {
   // overflowing page, innerWidth grows to fit the content, so it would hide the bug.
   const phone = await browser.newPage()
   phone.on('pageerror', (e) => pageErrors.push(String(e)))
+  phone.on('console', (m) => {
+    if (m.type() === 'error') pageErrors.push(`phone: ${m.text()}`)
+  })
+  phone.on('response', (r) => {
+    if (r.status() >= 400) pageErrors.push(`phone: ${r.status()} ${r.url()}`)
+  })
   await phone.setUserAgent(
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
   )
@@ -462,6 +468,7 @@ try {
       pressed: b.getAttribute('aria-pressed'),
     })),
     expanded: document.querySelector('button[aria-label="More actions"]').getAttribute('aria-expanded'),
+    haspopup: document.querySelector('button[aria-label="More actions"]').hasAttribute('aria-haspopup'),
     roleMenu: !!document.querySelector('[role="menu"], [role^="menuitem"]'),
   }))
   ok(
@@ -470,9 +477,14 @@ try {
       ['Open another', 'Add text', 'Edit text', 'Save page PNG'].every((n) => menuState.items.some((i) => i.name.includes(n))),
     menuState.items.map((i) => i.name).join(', '),
   )
+  // No tool is on yet, so both tools must say aria-pressed="false" (not just carry the attribute).
   ok(
     'phone: the menu is a disclosure (aria-expanded on ☰, aria-pressed on the tools, no role=menu)',
-    menuState.expanded === 'true' && !menuState.roleMenu && menuState.items.filter((i) => i.pressed !== null).length === 2,
+    menuState.expanded === 'true' &&
+      !menuState.haspopup &&
+      !menuState.roleMenu &&
+      menuState.items.filter((i) => i.pressed === 'false').length === 2 &&
+      menuState.items.filter((i) => i.pressed !== null).length === 2,
     JSON.stringify(menuState),
   )
 
@@ -496,7 +508,12 @@ try {
     added.boxes === 1 && added.text.includes('PhoneSentinel'),
     JSON.stringify(added),
   )
-  ok('phone: selecting a new box does not move the page', Math.abs(added.sheetTop - sheetTop0) < 0.5, `${sheetTop0} → ${added.sheetTop}`)
+  // Only meaningful while the box exists: once it is deleted the toolbar goes and the page moves back.
+  ok(
+    'phone: selecting a new box does not move the page',
+    added.boxes === 1 && Math.abs(added.sheetTop - sheetTop0) < 0.5,
+    `${sheetTop0} → ${added.sheetTop}, ${added.boxes} boxes`,
+  )
 
   // A tap on a text box (its handlers stop propagation) must still close the menu. Blur ☰ first,
   // as Safari never focuses a tapped button: in Chrome, focus moving from ☰ to the box would close
@@ -532,6 +549,15 @@ try {
   // A tap that only closes the menu must not also reach the page (it used to spawn an edit-box).
   await pause(600) // the edit tool loads the page's text runs
   await phone.tap(MENU).catch(() => {})
+  const pressedNow = await phone.evaluate(() => ({
+    text: document.querySelector('[data-testid="menu-tool-text"]')?.getAttribute('aria-pressed'),
+    edit: document.querySelector('[data-testid="menu-tool-edit"]')?.getAttribute('aria-pressed'),
+  }))
+  ok(
+    'phone: with Edit text on, the menu marks it pressed and Add text not',
+    pressedNow.edit === 'true' && pressedNow.text === 'false',
+    JSON.stringify(pressedNow),
+  )
   const runPt = await onPhonePage(108, 158)
   const phoneBoxesBefore = await phone.$$eval('.text-box', (els) => els.length)
   await phone.touchscreen.tap(runPt.x, runPt.y)
@@ -551,7 +577,11 @@ try {
   await phone.focus(MENU)
   for (let i = 0; i < 6; i++) await phone.keyboard.press('Tab')
   ok('phone: tabbing out of the menu closes it', !(await phone.evaluate(menuOpen)))
+  // Tab onto an item first: Chrome focuses a tapped ☰, so focus would already be there, and the
+  // check has to prove Escape moves focus off the item it unmounts.
   await phone.tap(MENU).catch(() => {})
+  await phone.keyboard.press('Tab')
+  const focusOnItem = await phone.evaluate(() => !!document.activeElement?.classList.contains('menu-item'))
   await phone.keyboard.press('Escape')
   const afterEscape = await phone.evaluate(
     (menuOpenSrc, focusSrc) => ({
@@ -561,7 +591,11 @@ try {
     menuOpen.toString(),
     focusOnMenuButton.toString(),
   )
-  ok('phone: Escape closes the menu and returns focus to ☰', !afterEscape.menuOpen && afterEscape.focusOnMenuButton, JSON.stringify(afterEscape))
+  ok(
+    'phone: Escape closes the menu and returns focus to ☰',
+    focusOnItem && !afterEscape.menuOpen && afterEscape.focusOnMenuButton,
+    JSON.stringify({ focusOnItem, ...afterEscape }),
+  )
 
   // A long file name with no spaces used to widen the page past the screen: the status bar's
   // "Loaded <name>" can't wrap, and the grid column grew to fit it. Wait for that status, not the
@@ -589,6 +623,9 @@ try {
       exportOnScreen: on('.header .btn.primary'),
       menuOnScreen: on('button[aria-label="More actions"]'),
       sizeLines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size,
+      exportH: Math.round(document.querySelector('.header .btn.primary').getBoundingClientRect().height),
+      menuH: Math.round(document.querySelector('button[aria-label="More actions"]').getBoundingClientRect().height),
+      dotW: document.querySelector('.statusbar .dot').getBoundingClientRect().width,
     }
   })
   ok(
@@ -598,6 +635,12 @@ try {
   )
   // The file chip squeezes the name, which ellipsizes, and not the size next to it.
   ok('phone: with a long file name the file size stays on one line', longName.sizeLines === 1, `${longName.sizeLines} lines`)
+  // Squeezed, Export wraps to two lines (48px tall) and the status dot narrows.
+  ok(
+    'phone: with a long file name Export, ☰ and the status dot keep their size',
+    longName.exportH === heights.exportButton && longName.menuH === heights.menu && longName.dotW === 6,
+    JSON.stringify({ exportH: longName.exportH, menuH: longName.menuH, dotW: longName.dotW, short: heights }),
+  )
   await phone.screenshot({ path: `${SHOTS}/06-phone.png` })
   await phone.close()
 
