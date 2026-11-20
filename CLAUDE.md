@@ -55,7 +55,7 @@ Page indices: the store's public API is 1-based (`oneBased` params), matching ho
 Text edits are not written to `bytes` while editing. They live in the store as `overlays: TextBox[]` (`src/lib/overlay.ts`), positioned in top-left-origin PDF points (`xPt/yPt/wPt/hPt`, 0-based `page`). `exportPdf` calls `bakeOverlays` (`src/lib/bake.ts`), which draws them with pdf-lib only at export. Page insert/delete/reorder remap box pages with `remapAfterInsert/Delete/Reorder`. Loading another file clears `overlays`.
 
 - **Add text** (`tool: 'text'`): a click spawns an empty box. A box left empty on blur is removed. Text soft-wraps to `wPt` (`wrapLines`).
-- **Edit text** (`tool: 'edit'`): `TextLayer` fetches the page's pdf.js text runs (cached per `docVersion:pageIndex`) and hit-tests the click against them. A hit spawns a box prefilled with the run and a `coverColor` sampled from one canvas pixel left of the run. A repeat click within 2pt selects the existing box. Edit-boxes are single-line in both the editor (`.text-box-edit.cover`, `white-space: pre`) and bake (split on `\n` only).
+- **Edit text** (`tool: 'edit'`): `TextLayer` fetches the page's pdf.js text runs (cached per `docVersion:pageIndex`) and hit-tests the click against them. A hit spawns a box prefilled with the run and a `coverColor` sampled from the canvas: the dominant colour (`dominantColor`, tolerance clusters over a grid, most common exact colour of the largest) inside the run's box, so a neighbouring glyph or the run's own ink doesn't win. A repeat click within 2pt selects the existing box. Edit-boxes are single-line in both the editor (`.text-box-edit.cover`, `white-space: pre`) and bake (split on `\n` only).
 - At bake, a box with `coverColor` gets a filled rectangle drawn first, then its text. This is **not** redaction: the original glyphs stay in the content stream and can still be extracted. The "Edit text" button's `title` says so.
 - Editor and bake share `ASCENT_RATIO`/`LINE_HEIGHT_RATIO`, so text sits on the same baseline. pdf-lib's `widthOfTextAtSize` includes kerning but `drawText` does not kern, so don't use it as an oracle for drawn widths.
 
@@ -79,6 +79,6 @@ Before every commit or push, run `git config user.email` from inside the repo. I
 - `removePage` refuses to delete the last remaining page (checked both in the store and in `deletePage` itself).
 - `.yarnrc` forces `--ignore-engines true` because `pdfjs-dist` declares `node>=20` in its engines field even though it's a browser library — this is safe to ignore since Vite/esbuild handles it fine under Node 18.
 - Known limits of Edit text:
-  - the cover is sampled at one point, so it can land on an adjacent glyph or a non-flat background;
+  - the cover is one flat colour (the region's dominant colour), so gradients, images or heavy ink covering most of the run's box give a poor match;
   - rotated pages and non-zero MediaBox origins are not handled;
   - dragging an edit-box moves its cover, and the original text shows again at the old spot.

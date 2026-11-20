@@ -3,8 +3,8 @@ import { usePdfStore } from '../store/usePdfStore'
 import {
   boxToScreen,
   pxToPt,
-  coverSamplePoint,
-  sampleColorAt,
+  coverSampleRegion,
+  sampleCoverColor,
   contrastText,
   WHITE,
   type TextBox,
@@ -15,7 +15,7 @@ import { hitTest, findBoxAt, type PageTextItem } from '../lib/textItems'
 interface Props {
   wPx: number
   hPx: number
-  /** The page canvas, read only to sample one background pixel for an edit-box's cover. */
+  /** The page canvas, read only to sample the background colour for an edit-box's cover. */
   canvasRef: React.RefObject<HTMLCanvasElement | null>
 }
 
@@ -24,12 +24,12 @@ const DEFAULT_SIZE_PT = 16
 const cssFamily = (f: TextBox['family']) =>
   f === 'serif' ? 'serif' : f === 'mono' ? 'monospace' : 'sans-serif'
 
-/** Background colour just left of a run, read from the rendered page canvas. */
+/** Dominant background colour around a run, read from the rendered page canvas. */
 function sampleCover(canvas: HTMLCanvasElement | null, item: PageTextItem, zoom: number): string {
   if (!canvas || !canvas.clientWidth) return WHITE
-  const pt = coverSamplePoint(item, zoom, canvas.width / canvas.clientWidth, canvas.width, canvas.height)
-  const ctx = pt ? canvas.getContext('2d') : null
-  return pt && ctx ? sampleColorAt(ctx, pt.x, pt.y) : WHITE
+  const region = coverSampleRegion(item, zoom, canvas.width / canvas.clientWidth, canvas.width, canvas.height)
+  const ctx = region ? canvas.getContext('2d') : null
+  return region && ctx ? sampleCoverColor(ctx, region) : WHITE
 }
 
 export default function TextLayer({ wPx, hPx, canvasRef }: Props) {

@@ -127,37 +127,92 @@ export function rgbToHex(r: number, g: number, b: number): string {
   return `#${ch(r)}${ch(g)}${ch(b)}`.toUpperCase()
 }
 
-/** CSS px left of the run where the background is sampled. */
-export const COVER_SAMPLE_OFFSET_PX = 3
+/** Grid points per axis when sampling a cover region (at most COVER_GRID² reads). */
+const COVER_GRID = 32
+
+/** Max per-channel distance from a cluster's first colour for a sample to join it. */
+const COVER_TOLERANCE = 24
+
+export interface PxRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
 /**
- * Device-pixel point just left of a run, vertically centred, clamped to the canvas.
+ * Device-pixel rect over exactly a run's box, clamped to the canvas. No margin: page outside a
+ * tight coloured band (table row, badge) would outvote the band at low zoom.
  * pxPerCss = canvas.width / canvas.clientWidth (renderPage scales by devicePixelRatio).
  */
-export function coverSamplePoint(
-  rect: { xPt: number; yPt: number; hPt: number },
+export function coverSampleRegion(
+  rect: { xPt: number; yPt: number; wPt: number; hPt: number },
   zoom: number,
   pxPerCss: number,
   canvasW: number,
   canvasH: number,
-): { x: number; y: number } | null {
+): PxRect | null {
   if (canvasW <= 0 || canvasH <= 0) return null
-  const xCss = rect.xPt * zoom - COVER_SAMPLE_OFFSET_PX
-  const yCss = (rect.yPt + rect.hPt / 2) * zoom
-  const clamp = (v: number, size: number) => Math.min(Math.max(0, Math.round(v)), size - 1)
-  return { x: clamp(xCss * pxPerCss, canvasW), y: clamp(yCss * pxPerCss, canvasH) }
+  const s = zoom * pxPerCss
+  const x0 = Math.max(0, Math.floor(rect.xPt * s))
+  const y0 = Math.max(0, Math.floor(rect.yPt * s))
+  const x1 = Math.min(canvasW, Math.ceil((rect.xPt + rect.wPt) * s))
+  const y1 = Math.min(canvasH, Math.ceil((rect.yPt + rect.hPt) * s))
+  if (x1 <= x0 || y1 <= y0) return null
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
-/** One canvas pixel → hex. White if unreadable or fully transparent (unpainted). */
-export function sampleColorAt(
-  ctx: Pick<CanvasRenderingContext2D, 'getImageData'>,
-  xPx: number,
-  yPx: number,
-): string {
+interface Cluster {
+  seed: [number, number, number]
+  n: number
+  /** Exact packed 0xRRGGBB -> count, so the result is a real pixel colour, not a mean. */
+  exact: Map<number, number>
+}
+
+/**
+ * Most common colour in an RGBA image. Grid samples join the first cluster whose seed colour is
+ * within COVER_TOLERANCE on every channel, so noisy or scanned backgrounds stay one cluster; the
+ * result is the most common exact colour in the largest cluster (a mean would drift off the
+ * background towards anti-aliased edge pixels). Ink is a minority of a text run's pixels, so the
+ * background wins. Transparent pixels count as white.
+ */
+export function dominantColor(img: { data: ArrayLike<number>; width: number; height: number }): string {
+  const { data, width, height } = img
+  if (width <= 0 || height <= 0) return WHITE
+  const nx = Math.min(width, COVER_GRID)
+  const ny = Math.min(height, COVER_GRID)
+  const clusters: Cluster[] = []
+  let best: Cluster | null = null
+  for (let j = 0; j < ny; j++) {
+    const y = Math.floor(((j + 0.5) * height) / ny)
+    for (let i = 0; i < nx; i++) {
+      const x = Math.floor(((i + 0.5) * width) / nx)
+      const o = (y * width + x) * 4
+      const [r, g, b] = data[o + 3] === 0 ? [255, 255, 255] : [data[o], data[o + 1], data[o + 2]]
+      let c = clusters.find(
+        (k) =>
+          Math.abs(k.seed[0] - r) <= COVER_TOLERANCE &&
+          Math.abs(k.seed[1] - g) <= COVER_TOLERANCE &&
+          Math.abs(k.seed[2] - b) <= COVER_TOLERANCE,
+      )
+      if (!c) clusters.push((c = { seed: [r, g, b], n: 0, exact: new Map() }))
+      c.n++
+      const key = (r << 16) | (g << 8) | b
+      c.exact.set(key, (c.exact.get(key) ?? 0) + 1)
+      if (!best || c.n > best.n) best = c
+    }
+  }
+  if (!best) return WHITE
+  let mode = 0
+  let modeN = -1
+  for (const [key, n] of best.exact) if (n > modeN) [mode, modeN] = [key, n]
+  return rgbToHex((mode >> 16) & 255, (mode >> 8) & 255, mode & 255)
+}
+
+/** Dominant colour of a canvas region, read with one getImageData call. White if unreadable. */
+export function sampleCoverColor(ctx: Pick<CanvasRenderingContext2D, 'getImageData'>, region: PxRect): string {
   try {
-    const d = ctx.getImageData(xPx, yPx, 1, 1).data
-    if (d[3] === 0) return WHITE
-    return rgbToHex(d[0], d[1], d[2])
+    return dominantColor(ctx.getImageData(region.x, region.y, region.w, region.h))
   } catch {
     return WHITE
   }
