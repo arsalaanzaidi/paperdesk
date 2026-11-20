@@ -114,18 +114,4 @@ export async function movePage(
   return out.save()
 }
 
-/** Download bytes as a file in the browser. */
-export function download(bytes: Uint8Array | Blob, fileName: string): void {
-  const blob =
-    bytes instanceof Blob
-      ? bytes
-      : new Blob([bytes as BlobPart], { type: 'application/pdf' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = fileName
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
+export { download } from './download'

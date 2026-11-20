@@ -285,8 +285,24 @@ try {
     behavior: 'allow',
     downloadPath: SHOTS,
   })
+  // WebKit (Safari, and every browser on iOS) starts a download after the click, so the blob URL
+  // must outlive it. Chrome never notices an early revoke, so watch for one directly.
+  await page.evaluate(() => {
+    window.__revokes = 0
+    const revoke = URL.revokeObjectURL.bind(URL)
+    URL.revokeObjectURL = (u) => {
+      window.__revokes++
+      revoke(u)
+    }
+  })
   await page.click('button.primary')
   await new Promise((r) => setTimeout(r, 2000))
+  const earlyRevokes = await page.evaluate(() => window.__revokes)
+  ok(
+    'export keeps the download URL alive after the click (Safari and iOS need it)',
+    earlyRevokes === 0,
+    `${earlyRevokes} revoked within 2s`,
+  )
   const { readdirSync, readFileSync } = await import('node:fs')
   const pdfs = readdirSync(SHOTS).filter((f) => f.toLowerCase().endsWith('.pdf'))
   const exported = pdfs.length > 0

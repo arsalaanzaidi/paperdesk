@@ -86,6 +86,7 @@ Don't run `cf build`, `cf dev` or `cf deploy` in this repo. With no `cloudflare.
 
 - `MAX_BYTES` (50MB) in the store is a soft warning threshold, not a hard limit — large files still load, just with a status message.
 - `removePage` refuses to delete the last remaining page (checked both in the store and in `deletePage` itself).
+- `download()` (`src/lib/download.ts`, re-exported from `pdf.ts`) revokes its blob URL `REVOKE_DELAY_MS` (60 s) after the click, not straight away. WebKit (Safari, and every browser on iOS) starts the download after the click, once the user confirms, and fails silently if the URL is already gone. Chrome never notices, so the smoke test watches `URL.revokeObjectURL` during export.
 - `.yarnrc` forces `--ignore-engines true` because `pdfjs-dist` declares `node>=20` in its engines field even though it's a browser library — this is safe to ignore since Vite/esbuild handles it fine under Node 18.
 - Known limits of Edit text:
   - the cover is one flat colour (the region's dominant colour), so gradients, images or heavy ink covering most of the run's box give a poor match;
