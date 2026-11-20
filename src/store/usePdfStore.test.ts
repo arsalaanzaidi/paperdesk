@@ -181,3 +181,29 @@ describe('tool', () => {
     expect(usePdfStore.getState().tool).toBe('select')
   })
 })
+
+describe('loadFile', () => {
+  const fakeFile = (): File =>
+    ({ name: 'b.pdf', type: 'application/pdf', size: 4, arrayBuffer: async () => new ArrayBuffer(4) }) as unknown as File
+
+  it('clears overlays and selection from the previous file on a successful load', async () => {
+    vi.mocked(openForRender).mockResolvedValue(fakeDoc(1))
+    usePdfStore.setState({ overlays: [mkBox('a', 0)], selectedBoxId: 'a' })
+
+    await usePdfStore.getState().loadFile(fakeFile())
+
+    expect(usePdfStore.getState().overlays).toEqual([])
+    expect(usePdfStore.getState().selectedBoxId).toBeNull()
+  })
+
+  it('keeps the existing overlays when the load fails', async () => {
+    vi.mocked(openForRender).mockRejectedValue(new Error('bad pdf'))
+    const overlays = [mkBox('a', 0)]
+    usePdfStore.setState({ overlays, selectedBoxId: 'a' })
+
+    await usePdfStore.getState().loadFile(fakeFile())
+
+    expect(usePdfStore.getState().overlays).toBe(overlays)
+    expect(usePdfStore.getState().selectedBoxId).toBe('a')
+  })
+})

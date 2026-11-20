@@ -101,6 +101,8 @@ export const usePdfStore = create<PdfState>((set, get) => {
         const bytes = new Uint8Array(buf)
         set({ fileName: file.name, fileSize: file.size })
         await applyBytes(bytes, 1)
+        // Boxes belong to the previous file; drop them only once the new one loaded.
+        set({ overlays: [], selectedBoxId: null })
         const warn =
           file.size > MAX_BYTES
             ? ' (large file — performance may be degraded)'
