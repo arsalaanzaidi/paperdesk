@@ -354,6 +354,25 @@ try {
     [...document.querySelectorAll('.header button')]
       .filter((b) => b.getClientRects().length > 0)
       .map((b) => b.getAttribute('aria-label') || b.textContent.trim())
+  // The page must be centred when it fits and reachable edge to edge when it doesn't: a centring
+  // flexbox would push the overflow off the left edge, where scrolling can't reach it.
+  const sheetEdges = () => {
+    const desk = document.querySelector('.desk')
+    const sheet = document.querySelector('.page-sheet')
+    const d = desk.getBoundingClientRect()
+    desk.scrollLeft = 0
+    const left = sheet.getBoundingClientRect().left - d.left - desk.clientLeft
+    desk.scrollLeft = desk.scrollWidth
+    const right = d.left + desk.clientLeft + desk.clientWidth - sheet.getBoundingClientRect().right
+    desk.scrollLeft = 0
+    return { left: Math.round(left), right: Math.round(right), sheet: Math.round(sheet.getBoundingClientRect().width), desk: desk.clientWidth }
+  }
+  const desktopEdges = await page.evaluate(sheetEdges)
+  ok(
+    'desktop: the page is centred on the desk',
+    desktopEdges.left > 0 && Math.abs(desktopEdges.left - desktopEdges.right) <= 1,
+    JSON.stringify(desktopEdges),
+  )
   const desktopActions = await page.evaluate(visibleActions)
   ok(
     'desktop: all five header actions are visible buttons, with no menu button',
@@ -378,6 +397,12 @@ try {
       actions: new Function(`return (${visibleActionsSrc})()`)(),
     }
   }, visibleActions.toString())
+  const phoneEdges = await phone.evaluate(sheetEdges)
+  ok(
+    'phone: the whole page can be scrolled into view, left edge included',
+    phoneEdges.left >= 0 && phoneEdges.right >= 0,
+    JSON.stringify(phoneEdges),
+  )
   ok(
     'phone: the header shows only Export PDF and the menu button',
     phoneLayout.actions.length === 2 &&
