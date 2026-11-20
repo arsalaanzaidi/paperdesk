@@ -56,6 +56,7 @@ Text edits are not written to `bytes` while editing. They live in the store as `
 
 - **Add text** (`tool: 'text'`): a click spawns an empty box. A box left empty on blur is removed. Text soft-wraps to `wPt` (`wrapLines`).
 - **Edit text** (`tool: 'edit'`): `TextLayer` fetches the page's pdf.js text runs (cached per `docVersion:pageIndex`) and hit-tests the click against them. A hit spawns a box prefilled with the run and a `coverColor` sampled from the canvas: the dominant colour (`dominantColor`, tolerance clusters over a grid, most common exact colour of the largest) inside the run's box, so a neighbouring glyph or the run's own ink doesn't win. A repeat click within 2pt selects the existing box. Edit-boxes are single-line in both the editor (`.text-box-edit.cover`, `white-space: pre`) and bake (split on `\n` only).
+- In the editor, the cover is the outer `.text-box`'s background, so it also fills that box's 1px transparent border. Painted on the inner `.text-box-edit` instead, it leaves a 1px ring where the original glyph tops show through on small text.
 - At bake, a box with `coverColor` gets a filled rectangle drawn first, then its text. This is **not** redaction: the original glyphs stay in the content stream and can still be extracted. The "Edit text" button's `title` says so.
 - Editor and bake share `ASCENT_RATIO`/`LINE_HEIGHT_RATIO`, so text sits on the same baseline. pdf-lib's `widthOfTextAtSize` includes kerning but `drawText` does not kern, so don't use it as an oracle for drawn widths.
 

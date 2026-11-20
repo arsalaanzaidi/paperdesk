@@ -189,15 +189,28 @@ try {
   ).then(() => true, () => false)
   ok('edit box is focused without an extra click', autoFocused)
 
-  const coverBg = await page.$$eval(
+  // The outer .text-box is the run box, with a 1px transparent border (blue when
+  // selected). A cover painted only on the inner editor leaves a 1px ring where
+  // the original glyph tops show through, so the outer box must paint it.
+  const cover = await page.$$eval(
     '.text-box-edit',
     (els, orig) => {
-      const e = els.find((x) => x.innerText.includes(orig))
-      return e ? getComputedStyle(e).backgroundColor : ''
+      const edit = els.find((x) => x.innerText.includes(orig))
+      const box = edit?.closest('.text-box')
+      if (!edit || !box) return null
+      const s = getComputedStyle(box)
+      return { boxBg: s.backgroundColor, clip: s.backgroundClip, editBg: getComputedStyle(edit).backgroundColor }
     },
     ORIGINAL,
   )
+  const TRANSPARENT = 'rgba(0, 0, 0, 0)'
+  const coverBg = cover && (cover.boxBg !== TRANSPARENT ? cover.boxBg : cover.editBg)
   ok('edit box carries the sampled cover colour (white page)', coverBg === 'rgb(255, 255, 255)', coverBg)
+  ok(
+    'cover paints the whole run box, border ring included',
+    !!cover && cover.boxBg === coverBg && cover.clip === 'border-box',
+    JSON.stringify(cover),
+  )
 
   // Replace the whole run with the sentinel.
   await page.evaluate(() => document.execCommand('selectAll'))

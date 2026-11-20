@@ -199,7 +199,9 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
           <div
             key={box.id}
             className={`text-box${selected ? ' selected' : ''}`}
-            style={{ left: r.left, top: r.top, width: r.width, height: r.height }}
+            // Edit-boxes hide the original glyphs in the editor too, matching export. The cover is
+            // painted on this box, not the inner editor, so it also fills the 1px border ring.
+            style={{ left: r.left, top: r.top, width: r.width, height: r.height, background: box.coverColor }}
             onPointerDown={(e) => {
               e.stopPropagation()
               selectBox(box.id)
@@ -218,8 +220,6 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
                 color: box.color,
                 fontWeight: box.bold ? 700 : 400,
                 fontStyle: box.italic ? 'italic' : 'normal',
-                // Edit-boxes hide the original glyphs in the editor too, matching export.
-                background: box.coverColor,
               }}
               // Sync external text in only when not focused, to avoid caret jumps.
               ref={(el) => {
