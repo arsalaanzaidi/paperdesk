@@ -1,5 +1,5 @@
 import type { PDFPageProxy } from 'pdfjs-dist'
-import { ASCENT_RATIO, LINE_HEIGHT_RATIO, type Family, type TextBox } from './overlay'
+import { ASCENT_RATIO, LINE_HEIGHT_RATIO, rgbToHex, type Family, type TextBox } from './overlay'
 
 /** One pdf.js text run, converted to the same top-left pt space TextBox uses. */
 export interface PageTextItem {
@@ -12,6 +12,8 @@ export interface PageTextItem {
   family: Family
   bold: boolean
   italic: boolean
+  /** The run's original fill colour (#RRGGBB), when the operator list says what it is. */
+  color?: string
 }
 
 export interface FontGuess {
@@ -26,6 +28,69 @@ export interface RawTextItem {
   transform: number[]
   width: number
   fontName: string
+}
+
+/** The subset of pdf.js's operator list that runColors reads. */
+export interface OpList {
+  fnArray: ArrayLike<number>
+  argsArray: ArrayLike<unknown>
+}
+
+/** pdf.js's OPS table (op name to code). Passed in so this module needs no pdf.js runtime import. */
+export type OpCodes = Record<string, number>
+
+/** Text rendering modes that paint nothing (3) or only clip (7). */
+const INVISIBLE_MODES = new Set([3, 7])
+
+/** NFKC (pdf.js normalises ligatures in text content) and no whitespace (pdf.js inserts spaces). */
+const squash = (s: string) => s.normalize('NFKC').replace(/\s+/g, '')
+
+/**
+ * Fill colour of each text item, read from the page's operator list. pdf.js has already turned
+ * grey, CMYK and other colour spaces into setFillRGBColor (0-255) there. Show-text glyphs are
+ * lined up with the items in document order; an item gets the most common colour among its
+ * characters, or undefined when it is invisible, pattern-filled or cannot be found.
+ */
+export function runColors(texts: string[], ops: OpList, OPS: OpCodes): (string | undefined)[] {
+  let state: { fill: string | null; mode: number } = { fill: '#000000', mode: 0 }
+  const stack: (typeof state)[] = []
+  let stream = ''
+  const colorAt: (string | null)[] = []
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const fn = ops.fnArray[i]
+    const args = ops.argsArray[i] as ArrayLike<unknown> | null
+    if (fn === OPS.save) stack.push({ ...state })
+    else if (fn === OPS.restore) state = stack.pop() ?? state
+    else if (fn === OPS.setFillRGBColor && args)
+      state.fill = rgbToHex(Number(args[0]), Number(args[1]), Number(args[2]))
+    else if (fn === OPS.setFillColorN || fn === OPS.setFillTransparent) state.fill = null
+    else if (fn === OPS.setTextRenderingMode && args) state.mode = Number(args[0])
+    else if ((fn === OPS.showText || fn === OPS.showSpacedText) && args) {
+      const color = INVISIBLE_MODES.has(state.mode) ? null : state.fill
+      for (const g of (args[0] ?? []) as unknown[]) {
+        if (!g || typeof g !== 'object') continue // spacing numbers
+        const chars = squash(String((g as { unicode?: unknown }).unicode ?? ''))
+        stream += chars
+        for (let c = 0; c < chars.length; c++) colorAt.push(color)
+      }
+    }
+  }
+
+  let cursor = 0
+  return texts.map((text) => {
+    const target = squash(text)
+    if (!target) return undefined
+    let at = stream.indexOf(target, cursor)
+    if (at >= 0) cursor = at + target.length
+    else at = stream.indexOf(target) // out of order: look anywhere, keep the cursor
+    if (at < 0) return undefined
+    const counts = new Map<string | null, number>()
+    for (let c = at; c < at + target.length; c++) counts.set(colorAt[c], (counts.get(colorAt[c]) ?? 0) + 1)
+    let best: string | null = null
+    let bestN = 0
+    for (const [color, n] of counts) if (n > bestN) [best, bestN] = [color, n]
+    return best ?? undefined
+  })
 }
 
 /** Extra width so re-wrapping the original string at bake time doesn't push its last word to a new line. */
@@ -78,21 +143,20 @@ export function toPageTextItem(
   }
 }
 
-/** All clickable text runs on a page, in top-left pt space at scale 1. */
-export async function extractTextItems(page: PDFPageProxy): Promise<PageTextItem[]> {
+/** All clickable text runs on a page, in top-left pt space at scale 1. `OPS` is pdf.js's op table. */
+export async function extractTextItems(page: PDFPageProxy, OPS: OpCodes): Promise<PageTextItem[]> {
   const viewport = page.getViewport({ scale: 1 })
   const content = await page.getTextContent()
   const raw = content.items.flatMap((i) => ('str' in i ? [i as RawTextItem] : []))
 
-  // Real font names live in commonObjs, which is only populated once the page's
-  // operator list has been built. Desk has usually rendered the page already.
+  // The operator list carries each run's fill colour. Building it also populates commonObjs,
+  // where the real font names live; pdf.js caches it per page.
   const ids = [...new Set(raw.map((i) => i.fontName))]
-  if (ids.some((id) => !page.commonObjs.has(id))) {
-    try {
-      await page.getOperatorList()
-    } catch {
-      // Style guess falls back to the generic family below.
-    }
+  let colors: (string | undefined)[] = []
+  try {
+    colors = runColors(raw.map((i) => i.str), await page.getOperatorList(), OPS)
+  } catch {
+    // Colours fall back to the editor default; style guess falls back to the generic family.
   }
 
   const styleOf = new Map<string, FontGuess>()
@@ -107,9 +171,10 @@ export async function extractTextItems(page: PDFPageProxy): Promise<PageTextItem
     styleOf.set(id, guessStyle(font?.name ?? '', generic, font?.bold, font?.italic))
   }
 
-  return raw.flatMap((i) => {
+  return raw.flatMap((i, n) => {
     const it = toPageTextItem(i, viewport.transform, styleOf.get(i.fontName) ?? guessStyle('', ''))
-    return it ? [it] : []
+    if (!it) return []
+    return [colors[n] ? { ...it, color: colors[n] } : it]
   })
 }
 

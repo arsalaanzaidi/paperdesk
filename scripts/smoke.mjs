@@ -212,6 +212,17 @@ try {
     JSON.stringify(cover),
   )
 
+  // make-test-pdf draws the sentence in rgb(0.15, 0.15, 0.15), i.e. #262626.
+  const textColor = await page.$$eval(
+    '.text-box-edit',
+    (els, orig) => {
+      const e = els.find((x) => x.innerText.includes(orig))
+      return e ? getComputedStyle(e).color : ''
+    },
+    ORIGINAL,
+  )
+  ok("edit box keeps the original run's text colour", textColor === 'rgb(38, 38, 38)', textColor)
+
   // Replace the whole run with the sentinel.
   await page.evaluate(() => document.execCommand('selectAll'))
   await page.keyboard.type(EDIT_SENTINEL)

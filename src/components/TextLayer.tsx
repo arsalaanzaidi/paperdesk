@@ -147,7 +147,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       text: hit.str,
       family: hit.family,
       sizePt: hit.sizePt,
-      color: contrastText(coverColor),
+      color: hit.color ?? contrastText(coverColor), // original run colour when the op list told us
       bold: hit.bold,
       italic: hit.italic,
       coverColor,

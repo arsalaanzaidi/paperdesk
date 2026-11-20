@@ -73,7 +73,7 @@ export async function getPageTextItems(
   doc: PDFDocumentProxy,
   pageNumber: number,
 ): Promise<PageTextItem[]> {
-  return extractTextItems(await doc.getPage(pageNumber))
+  return extractTextItems(await doc.getPage(pageNumber), pdfjsLib.OPS)
 }
 
 // --- Mutations (operate on bytes, return new bytes) ---
