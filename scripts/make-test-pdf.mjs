@@ -12,6 +12,11 @@ const body = await doc.embedFont(StandardFonts.Helvetica)
 // Embedded whole (subset: false), so this script needs none of the app's fontkit adapter.
 doc.registerFontkit(fontkit)
 const arimo = await doc.embedFont(await readFile(new URL('../src/assets/fonts/Arimo-Regular.ttf', import.meta.url)))
+// A "Calibri" run, as a Word export would have: Carlito's glyphs under Calibri's name, so the editor
+// has to match it to its look-alike by name.
+const calibri = await doc.embedFont(await readFile(new URL('../src/assets/fonts/Carlito-Regular.ttf', import.meta.url)), {
+  customName: 'Calibri',
+})
 
 const pages = [
   { title: 'Quarterly Report', color: rgb(0.23, 0.29, 0.88) },
@@ -39,6 +44,7 @@ pages.forEach((p, i) => {
   })
   // On every page, like the sentence: the smoke test deletes a page before it edits text.
   page.drawText('Total due: ₹ 1,234.50', { x: 48, y: 600, size: 12, font: arimo, color: rgb(0.15, 0.15, 0.15) })
+  page.drawText('Invoice total: 1,234.50', { x: 48, y: 560, size: 12, font: calibri, color: rgb(0.15, 0.15, 0.15) })
 })
 
 await writeFile(out, await doc.save())

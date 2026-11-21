@@ -333,6 +333,31 @@ try {
     await page.$$eval('.text-box-edit', (els) => els.every((e) => getComputedStyle(e).fontKerning === 'none')),
   )
 
+  // A "Calibri" run (make-test-pdf: Carlito glyphs under Calibri's name, baseline 560, so top-left
+  // y ≈ 282): its edit-box is drawn in the Carlito look-alike, plain text included, and says so.
+  const CALIBRI_RUN = 'Invoice total: 1,234.50'
+  const CALIBRI_SENTINEL = 'CalibriSentinel'
+  await clickRunAt(60, 278)
+  const calibriPrefilled = await page
+    .waitForFunction(
+      (t) => document.activeElement?.classList.contains('text-box-edit') && document.activeElement.innerText.includes(t),
+      { timeout: 4000 },
+      CALIBRI_RUN,
+    )
+    .then(() => true, () => false)
+  ok('edit click on a Calibri run prefills a focused box', calibriPrefilled)
+  await page.keyboard.type(` ${CALIBRI_SENTINEL}`)
+  ok('the Calibri edit-box shows its look-alike, Carlito', await boxFontIs(CALIBRI_SENTINEL, 'pd-carlito'))
+  const calibriToolbar = await page.evaluate(() => ({
+    font: document.querySelector('select[aria-label="Font family"]')?.value,
+    match: document.querySelector('[data-testid="font-match"]')?.textContent,
+  }))
+  ok(
+    'the toolbar shows Carlito standing in for Calibri',
+    calibriToolbar.font === 'carlito' && calibriToolbar.match === 'for Calibri',
+    JSON.stringify(calibriToolbar),
+  )
+
   // A mono box with ₹: Cousine lacks the glyph, so that one character falls back to Arimo.
   await page.click('[data-testid="tool-text"]')
   await clickRunAt(300, 400) // clear of the floating page controls
@@ -417,6 +442,18 @@ try {
     ok('exported PDF text contains the edit sentinel', allText.includes(EDIT_SENTINEL))
     ok('exported PDF keeps the prefilled ₹ edit and its new text', allText.includes(`${RUPEE_RUN} ${PREFILL_SENTINEL}`))
     ok('exported PDF has the mono ₹ box', allText.replace(/\s+/g, ' ').includes('Mono ₹ 7'))
+    ok('exported PDF keeps the Calibri edit and its new text', allText.includes(`${CALIBRI_RUN} ${CALIBRI_SENTINEL}`))
+    // The edit was drawn in Carlito, not the standard Helvetica, although its text is plain WinAnsi.
+    const { PDFDocument, PDFDict, PDFName } = await import('pdf-lib')
+    const lib = await PDFDocument.load(readFileSync(`${SHOTS}/${pdfs[0]}`))
+    const fontNames = []
+    for (const [, obj] of lib.context.enumerateIndirectObjects()) {
+      if (obj instanceof PDFDict && obj.get(PDFName.of('Type')) === PDFName.of('Font')) {
+        const base = obj.get(PDFName.of('BaseFont'))
+        if (base instanceof PDFName) fontNames.push(base.decodeText())
+      }
+    }
+    ok('exported PDF embeds Carlito for the Calibri edit', fontNames.some((n) => /\+?Carlito/.test(n)), fontNames.join(', '))
   }
 
   // Phone: an iPhone-sized touch page. The header was one non-wrapping row 671px wide, which
