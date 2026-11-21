@@ -1,8 +1,28 @@
-import { describe, it, expect } from 'vitest'
-import { PDFDocument, StandardFonts } from 'pdf-lib'
+import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { PDFDocument, PDFDict, PDFName, StandardFonts } from 'pdf-lib'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { bakeOverlays, wrapLines } from './bake'
+import { faceUrl, type FaceId } from './fonts'
 import type { TextBox } from './overlay'
+
+/** The bundled fonts, read from disk (the browser fetches them). */
+const fromDisk = vi.fn(async (id: FaceId) => new Uint8Array(readFileSync(fileURLToPath(faceUrl(id)))))
+
+/** BaseFont names of every font in a saved PDF, without their ABCDEF+ subset tag. */
+async function fontNames(bytes: Uint8Array): Promise<string[]> {
+  const doc = await PDFDocument.load(bytes)
+  const names: string[] = []
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (obj instanceof PDFDict && obj.get(PDFName.of('Type')) === PDFName.of('Font')) {
+      const base = obj.get(PDFName.of('BaseFont'))
+      if (base instanceof PDFName && !obj.get(PDFName.of('DescendantFonts')))
+        names.push(base.decodeText().replace(/^[A-Z]{6}\+/, ''))
+    }
+  }
+  return names
+}
 
 async function blankPdf(): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
@@ -16,14 +36,14 @@ const boxWith = (text: string): TextBox => ({
 })
 
 async function extractText(bytes: Uint8Array): Promise<string> {
-  const doc = await pdfjs.getDocument({ data: bytes, useWorkerFetch: false, isEvalSupported: false }).promise
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), useWorkerFetch: false, isEvalSupported: false }).promise
   const page = await doc.getPage(1)
   const content = await page.getTextContent()
   return content.items.map((i) => ('str' in i ? i.str : '')).join(' ')
 }
 
 async function page1Ops(bytes: Uint8Array) {
-  const doc = await pdfjs.getDocument({ data: bytes, useWorkerFetch: false, isEvalSupported: false }).promise
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), useWorkerFetch: false, isEvalSupported: false }).promise
   return (await doc.getPage(1)).getOperatorList()
 }
 
@@ -104,5 +124,61 @@ describe('bakeOverlays', () => {
     const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('  '), coverColor: '#FF0000' }])
     const { fnArray } = await page1Ops(out)
     expect(fnArray).not.toContain(pdfjs.OPS.constructPath)
+  })
+})
+
+describe('bakeOverlays with text the standard fonts cannot draw', () => {
+  const opts = { loadFontBytes: fromDisk }
+
+  it('exports ₹ in a sans box with Arimo, as real extractable text', async () => {
+    const out = await bakeOverlays(await blankPdf(), [boxWith('Total ₹ 1,234.50')], opts)
+    expect(await extractText(out)).toContain('Total ₹ 1,234.50')
+    expect((await fontNames(out)).some((n) => n.startsWith('Arimo'))).toBe(true)
+  })
+
+  it('uses Tinos for serif boxes, in the box style', async () => {
+    const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('₹ 9'), family: 'serif', bold: true }], opts)
+    expect((await fontNames(out)).some((n) => n.startsWith('Tinos-Bold'))).toBe(true)
+  })
+
+  it('draws a mono box in Cousine and only the ₹ it lacks in Arimo', async () => {
+    const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('Mono ₹ 7'), family: 'mono' }], opts)
+    const names = await fontNames(out)
+    expect(names.some((n) => n.startsWith('Cousine'))).toBe(true)
+    expect(names.some((n) => n.startsWith('Arimo'))).toBe(true)
+    expect((await extractText(out)).replace(/\s+/g, ' ')).toContain('Mono ₹ 7')
+  })
+
+  it('keeps an edit-box that holds ₹ on one line', async () => {
+    const box = { ...boxWith('Total ₹ 1,234.50 and a long tail of words'), wPt: 40, coverColor: '#FFFFFF' }
+    const { fnArray } = await page1Ops(await bakeOverlays(await blankPdf(), [box], opts))
+    // One line, but one showText per font run: Arimo has every character here.
+    expect(fnArray.filter((f) => f === pdfjs.OPS.showText).length).toBe(1)
+  })
+
+  it('wraps a mixed-font add-box by the widths of its runs', async () => {
+    const box = { ...boxWith('₹ one ₹ two ₹ three ₹ four'), family: 'mono' as const, wPt: 90 }
+    const out = await bakeOverlays(await blankPdf(), [box], opts)
+    const doc = await pdfjs.getDocument({ data: out.slice(), useWorkerFetch: false, isEvalSupported: false }).promise
+    const { items } = await (await doc.getPage(1)).getTextContent()
+    const lineTops = new Set(items.filter((i) => 'str' in i && i.str.trim()).map((i) => ('transform' in i ? Math.round(i.transform[5]) : 0)))
+    expect(lineTops.size).toBeGreaterThan(1)
+  })
+
+  it('loads no font for plain WinAnsi text', async () => {
+    fromDisk.mockClear()
+    await bakeOverlays(await blankPdf(), [boxWith('café — “quoted” €5')], opts)
+    expect(fromDisk).not.toHaveBeenCalled()
+  })
+
+  it('refuses a character no bundled font has, and names it', async () => {
+    await expect(bakeOverlays(await blankPdf(), [boxWith('Hello 漢')], opts)).rejects.toThrow('漢 (U+6F22)')
+  })
+
+  it('asks for a reload when the fonts cannot be fetched (a deploy replaced them)', async () => {
+    const gone = async () => {
+      throw new TypeError('Failed to fetch')
+    }
+    await expect(bakeOverlays(await blankPdf(), [boxWith('₹ 1')], { loadFontBytes: gone })).rejects.toThrow(/reload/i)
   })
 })
