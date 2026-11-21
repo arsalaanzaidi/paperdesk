@@ -3,12 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Edit and rearrange PDF pages in your browser — nothing is uploaded." />
+    <title>paperdesk — Edit PDFs in your browser, nothing uploaded</title>
+    <meta
+      name="description"
+      content="Free PDF editor that runs entirely in your browser. Reorder, add and delete pages, add or edit text, and export. Your file never leaves your device."
+    />
+    <!-- One canonical address for search engines: the GitHub Pages copy. The Cloudflare copy
+         (paperdesk.pentaglobe.in) sends X-Robots-Tag: noindex, so it stays out of results. -->
+    <link rel="canonical" href="https://arsalaanzaidi.github.io/paperdesk/" />
+    <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1b1e24" media="(prefers-color-scheme: dark)" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='4' width='17' height='24' rx='2' fill='white' stroke='%231a1e24' stroke-width='2'/%3E%3Cpath d='M18 4 h6 v6 z' fill='%233a4be0'/%3E%3C/svg%3E"
     />
-    <title>paperdesk — PDF editor</title>
+
+    <!-- Link previews (Slack, X, LinkedIn, WhatsApp, iMessage). Image URLs must be absolute. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="paperdesk" />
+    <meta property="og:title" content="paperdesk — Edit PDFs in your browser" />
+    <meta
+      property="og:description"
+      content="Reorder pages, add and edit text, export. Your file never leaves your device: nothing is uploaded."
+    />
+    <meta property="og:url" content="https://arsalaanzaidi.github.io/paperdesk/" />
+    <meta property="og:image" content="https://arsalaanzaidi.github.io/paperdesk/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="paperdesk: edit PDFs in your browser. A page with one line being edited." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="paperdesk — Edit PDFs in your browser" />
+    <meta
+      name="twitter:description"
+      content="Reorder pages, add and edit text, export. Your file never leaves your device: nothing is uploaded."
+    />
+    <meta name="twitter:image" content="https://arsalaanzaidi.github.io/paperdesk/og-image.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "paperdesk",
+        "url": "https://arsalaanzaidi.github.io/paperdesk/",
+        "description": "Free PDF editor that runs entirely in your browser: reorder, add and delete pages, add or edit text, and export. Files never leave the device.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any (web browser)",
+        "browserRequirements": "Requires JavaScript",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "image": "https://arsalaanzaidi.github.io/paperdesk/og-image.png",
+        "codeRepository": "https://github.com/arsalaanzaidi/paperdesk"
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
