@@ -86,6 +86,20 @@ The standard 14 stay only for runs already in them and for plain WinAnsi Add-tex
 - **Arimo matches macOS Arial's advance widths** for all 191 shared ASCII/Latin-1 characters in Regular, Italic and Bold Italic, and 190 in Bold (µ differs).
 - **Build checks:** all 12 fonts use long-format loca (the halving bug can't occur) and allow embedding.
 
+## Phase 2 (symbols): parked 2026-11-21, findings so far
+
+- Scope chosen: symbols only, no picture emoji (they are refused at export).
+- Coverage over the target blocks (assigned code points): Arimo, then Noto Sans Math, Noto Sans Symbols and Noto Sans Symbols 2, draws arrows, math operators, Math Alphanumerics (996/996), Misc Symbols (256/256), geometric shapes and supplemental arrows in full. Noto Sans adds 13 more (₿ ⃀ and the vulgar fractions). Still missing: heavy and dashed box drawing (84), part of Block Elements (24) and 4 scan lines (Noto Sans Mono would cover these), plus 17 picture-emoji.
+- The three symbol fonts subset, extract and render correctly through fontkit 2 (pdf.js, Poppler, Quick Look). All use long-format loca; Math and Symbols 2 have odd-length glyph records, which only matters for short format.
+- Plan when resumed: per-face coverage data, so bake embeds only the faces a box uses, and `FontFace` with `unicode-range` in the editor, so the browser downloads only the faces that typed characters need. Strip VS15/VS16 before drawing.
+
+## Phase 3a results (2026-11-21)
+
+- Look-alikes added (OFL): Carlito (Calibri), Caladea (Cambria), Gelasio (Georgia), Selawik (Segoe UI; regular and bold only), Open Sans and Roboto (Roboto's 160 KB "web" build, which covers Latin-1 and Latin Extended-A).
+- Gelasio matches macOS Georgia's widths for 188 of 190 Latin-1 characters (180-181 in the italics). Calibri, Cambria and Segoe UI aren't installed here, so those metric claims come from the fonts' documentation.
+- Carlito, Gelasio and Roboto have ₹; Caladea, Open Sans and Selawik don't, so ₹ falls back to Arimo there.
+- Left for 3b: reusing the PDF's own embedded subset, so edits use the original glyphs where it has them.
+
 ## Disagreements and unverified claims
 
 - Liberation Sans in pdfjs-dist: one report calls it open-licence, but its name table says GPL with an exception. Don't reuse it.
