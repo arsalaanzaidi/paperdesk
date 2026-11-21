@@ -28,6 +28,8 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn build
+      # _headers is Cloudflare config (it sends noindex there). Pages would serve it as a plain file.
+      - run: rm dist/_headers
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
