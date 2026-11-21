@@ -16,6 +16,7 @@ import { getPageTextItems } from '../lib/pdf'
 import { hitTest, findBoxAt, type PageTextItem } from '../lib/textItems'
 import { usesBundledFont, fontChain, cssFontStack, faceLoaded, loadFace, matchFont, FAMILIES, type FaceId } from '../lib/fonts'
 import { loadFontkit } from '../lib/fontkit'
+import { ownFontStack, requestOwnFont, useOwnFontsVersion } from '../lib/ownFonts'
 
 interface Props {
   wPx: number
@@ -77,6 +78,7 @@ function sampleCover(canvas: HTMLCanvasElement | null, item: PageTextItem, zoom:
 
 export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
   const {
+    bytes,
     doc,
     docVersion,
     overlays,
@@ -120,9 +122,20 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
   // Boxes with text the standard 14 can't draw show the bundled faces bake will embed. Load them
   // (and warm fontkit for the export) and re-render once they're in document.fonts.
   const [, setFacesReady] = useState(0)
+  // Edit-boxes whose original font the PDF embeds draw in it while it has every character they
+  // hold (as bake does); look those fonts up, and skip the look-alike for boxes they cover.
+  useOwnFontsVersion()
+  useEffect(() => {
+    if (!bytes || !doc) return
+    for (const b of boxes) requestOwnFont(bytes, doc, b)
+  })
+  const ownStack = (b: TextBox) => ownFontStack(bytes, doc, b)
+
   const missingFaces = [
     ...new Set(
-      boxes.filter(usesBundledFont).flatMap((b) => fontChain(b)),
+      boxes
+        .filter((b) => usesBundledFont(b) && !ownStack(b))
+        .flatMap((b) => fontChain(b)),
     ),
   ]
     .filter((id) => !faceLoaded(id))
@@ -268,7 +281,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       {boxes.map((box) => {
         const r = boxToScreen(box, zoom)
         const selected = selectedBoxId === box.id
-        const stack = bundledStack(box)
+        const stack = ownStack(box) ?? bundledStack(box)
         const family = stack ?? cssFamily(box.family)
         return (
           <div

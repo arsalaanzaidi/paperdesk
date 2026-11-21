@@ -1,6 +1,7 @@
 import { usePdfStore } from '../store/usePdfStore'
 import type { Family, TextBox } from '../lib/overlay'
 import { FAMILIES, matchFont, type FontKey } from '../lib/fonts'
+import { ownFontStack, useOwnFontsVersion } from '../lib/ownFonts'
 
 const GENERIC: Record<Family, string> = { sans: 'Sans', serif: 'Serif', mono: 'Mono' }
 const KEYS = Object.keys(FAMILIES) as FontKey[]
@@ -25,7 +26,8 @@ function matchLabel(box: TextBox): { text: string; title: string } | null {
 }
 
 export default function TextToolbar() {
-  const { overlays, selectedBoxId, updateTextBox, removeTextBox } = usePdfStore()
+  const { bytes, doc, overlays, selectedBoxId, updateTextBox, removeTextBox } = usePdfStore()
+  useOwnFontsVersion()
   const box = overlays.find((b) => b.id === selectedBoxId)
   if (!box) return null
   const patch = (p: Partial<typeof box>) => updateTextBox(box.id, p)
@@ -34,7 +36,10 @@ export default function TextToolbar() {
     value in GENERIC
       ? patch({ family: value as Family, fontKey: undefined })
       : patch({ fontKey: value as FontKey, family: FAMILIES[value as FontKey].generic })
-  const match = matchLabel(box)
+  // The PDF's own font beats any look-alike while it has every character the box holds.
+  const match = ownFontStack(bytes, doc, box)
+    ? { text: 'original font', title: "This box uses the PDF's own font: it has every character you've typed." }
+    : matchLabel(box)
 
   return (
     <div className="text-toolbar" role="toolbar" aria-label="Text style" data-testid="text-toolbar">
