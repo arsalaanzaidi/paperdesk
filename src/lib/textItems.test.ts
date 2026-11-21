@@ -40,6 +40,18 @@ describe('guessStyle', () => {
   it('honours explicit pdf.js bold/italic flags', () => {
     expect(guessStyle('Foo', 'sans-serif', true, true)).toEqual({ family: 'sans', bold: true, italic: true })
   })
+  it('knows common serif and mono families by name', () => {
+    expect(guessStyle('ABCDEF+Cambria', 'sans-serif').family).toBe('serif')
+    expect(guessStyle('Garamond', 'sans-serif').family).toBe('serif')
+    expect(guessStyle('BookAntiqua', 'sans-serif').family).toBe('serif')
+    expect(guessStyle('Consolas', 'sans-serif').family).toBe('mono')
+    expect(guessStyle('Menlo-Regular', 'sans-serif').family).toBe('mono')
+  })
+  it("falls back to the PDF's own serif/fixed-pitch flags (pdf.js's generic family) for unknown names", () => {
+    expect(guessStyle('ABCDEF+SomeBookFace', 'serif').family).toBe('serif')
+    expect(guessStyle('ABCDEF+SomeCodeFace', 'monospace').family).toBe('mono')
+    expect(guessStyle('ABCDEF+SomeSansFace', 'sans-serif').family).toBe('sans')
+  })
 })
 
 describe('toPageTextItem', () => {

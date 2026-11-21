@@ -96,10 +96,15 @@ export function runColors(texts: string[], ops: OpList, OPS: OpCodes): (string |
 /** Extra width so re-wrapping the original string at bake time doesn't push its last word to a new line. */
 const WIDTH_PAD_RATIO = 0.1
 
+const MONO_NAMES = /courier|mono|consol|menlo|cousine/i
+const SERIF_NAMES = /times|georgia|garamond|cambria|caladea|gelasio|tinos|palatino|antiqua|bookman|baskerville|caslon|didot|serif/i
+const SANS_NAMES = /arial|helvetica|calibri|carlito|segoe|selawik|verdana|tahoma|roboto|opensans|open sans|arimo|sans/i
+
 /**
  * Heuristic style guess. `baseName` is the real font name from pdf.js's commonObjs
  * (e.g. "Helvetica-Bold", "ABCDEF+Arial-ItalicMT"), or '' if unknown. `genericFamily`
- * is pdf.js's content.styles fontFamily ("sans-serif" | "serif" | "monospace").
+ * is pdf.js's content.styles fontFamily ("sans-serif" | "serif" | "monospace"), which pdf.js
+ * derives from the font's own serif and fixed-pitch flags: it decides when the name doesn't.
  * Not a real font lookup.
  */
 export function guessStyle(
@@ -111,10 +116,11 @@ export function guessStyle(
   const bold = !!boldFlag || /bold|black|heavy|semibold|demi/i.test(baseName)
   const italic = !!italicFlag || /italic|oblique/i.test(baseName)
   let family: Family = 'sans'
-  if (/courier|mono|consol/i.test(baseName)) family = 'mono'
-  else if (/times|georgia|garamond|serif/i.test(baseName) && !/sans/i.test(baseName)) family = 'serif'
-  else if (!baseName && genericFamily === 'serif') family = 'serif'
-  else if (!baseName && genericFamily === 'monospace') family = 'mono'
+  if (MONO_NAMES.test(baseName)) family = 'mono'
+  else if (SERIF_NAMES.test(baseName) && !/sans/i.test(baseName)) family = 'serif'
+  else if (SANS_NAMES.test(baseName)) family = 'sans'
+  else if (genericFamily === 'serif') family = 'serif'
+  else if (genericFamily === 'monospace') family = 'mono'
   return { family, bold, italic }
 }
 
