@@ -1,0 +1,23 @@
+name: Checks
+
+# Lint, unit tests and the build on every pull request. Read-only, and it never deploys:
+# deploys happen only on pushes to master (pages.yml, and Cloudflare Workers Builds).
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn lint
+      - run: yarn test
+      - run: yarn build
