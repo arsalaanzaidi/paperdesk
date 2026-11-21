@@ -358,6 +358,33 @@ try {
     JSON.stringify(calibriToolbar),
   )
 
+  // A "Times New Roman" subset run (baseline 520, top-left y ≈ 322): an edit that only reuses its
+  // characters is drawn in that very font, in the editor (pdf.js's face for it) and in the export.
+  const TIMES_EDIT = 'Ref 2025-04'
+  await clickRunAt(60, 318)
+  await page.waitForFunction(
+    () => document.activeElement?.classList.contains('text-box-edit') && document.activeElement.innerText.includes('Ref 2024-05'),
+    { timeout: 4000 },
+  ).catch(() => {})
+  await page.evaluate(() => document.execCommand('selectAll'))
+  await page.keyboard.type(TIMES_EDIT)
+  const ownFace = await page
+    .waitForFunction(
+      (t) => {
+        const e = [...document.querySelectorAll('.text-box-edit')].find((x) => x.innerText === t)
+        return !!e && /^"?g_d\d+_f\d+/.test(getComputedStyle(e).fontFamily)
+      },
+      { timeout: 6000 },
+      TIMES_EDIT,
+    )
+    .then(() => true, () => false)
+  const timesLabel = await page.$eval('[data-testid="font-match"]', (e) => e.textContent).catch(() => null)
+  ok(
+    "an edit using only the run's own characters shows the PDF's own font, labelled so",
+    ownFace && timesLabel === 'original font',
+    JSON.stringify({ ownFace, timesLabel }),
+  )
+
   // A mono box with ₹: Cousine lacks the glyph, so that one character falls back to Arimo.
   await page.click('[data-testid="tool-text"]')
   await clickRunAt(300, 400) // clear of the floating page controls
@@ -454,6 +481,12 @@ try {
       }
     }
     ok('exported PDF embeds Carlito for the Calibri edit', fontNames.some((n) => /\+?Carlito/.test(n)), fontNames.join(', '))
+    ok('exported PDF has the Times New Roman edit', allText.includes(TIMES_EDIT))
+    ok(
+      "the Times New Roman edit reused the PDF's font, embedding no look-alike (Tinos)",
+      !fontNames.some((n) => /Tinos/.test(n)),
+      fontNames.join(', '),
+    )
   }
 
   // Phone: an iPhone-sized touch page. The header was one non-wrapping row 671px wide, which

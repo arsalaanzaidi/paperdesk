@@ -8,15 +8,33 @@ const out = process.argv[2] || 'test.pdf'
 const doc = await PDFDocument.create()
 const font = await doc.embedFont(StandardFonts.HelveticaBold)
 const body = await doc.embedFont(StandardFonts.Helvetica)
-// A run in an embedded font with a character the standard 14 can't draw, like a real-world PDF.
-// Embedded whole (subset: false), so this script needs none of the app's fontkit adapter.
-doc.registerFontkit(fontkit)
-const arimo = await doc.embedFont(await readFile(new URL('../src/assets/fonts/Arimo-Regular.ttf', import.meta.url)))
-// A "Calibri" run, as a Word export would have: Carlito's glyphs under Calibri's name, so the editor
-// has to match it to its look-alike by name.
-const calibri = await doc.embedFont(await readFile(new URL('../src/assets/fonts/Carlito-Regular.ttf', import.meta.url)), {
-  customName: 'Calibri',
+// Runs in embedded fonts, as real-world PDFs have them: subsets (only the glyphs drawn) under
+// subset-tagged names. fontkit 2 needs the app's encodeStream adapter (src/lib/fontkit.ts) to subset.
+doc.registerFontkit({
+  create(bytes) {
+    const f = fontkit.create(bytes)
+    const createSubset = f.createSubset.bind(f)
+    f.createSubset = () => {
+      const subset = createSubset()
+      subset.encodeStream = () => {
+        const on = {}
+        const stream = { on: (event, fn) => ((on[event] = fn), stream) }
+        setTimeout(() => (on.data?.(subset.encode()), on.end?.()), 0)
+        return stream
+      }
+      return subset
+    }
+    return f
+  },
 })
+const embed = async (file, customName) =>
+  doc.embedFont(await readFile(new URL(`../src/assets/fonts/${file}`, import.meta.url)), { subset: true, customName })
+// A character the standard 14 can't draw.
+const arimo = await embed('Arimo-Regular.ttf', 'GHIJKL+Arimo-Regular')
+// "Calibri", as a Word export would have it: the editor has to match it to its look-alike by name.
+const calibri = await embed('Carlito-Regular.ttf', 'MNOPQR+Calibri')
+// "Times New Roman": an edit that only reuses these characters stays in this very font.
+const times = await embed('Tinos-Regular.ttf', 'STUVWX+TimesNewRomanPSMT')
 
 const pages = [
   { title: 'Quarterly Report', color: rgb(0.23, 0.29, 0.88) },
@@ -45,6 +63,7 @@ pages.forEach((p, i) => {
   // On every page, like the sentence: the smoke test deletes a page before it edits text.
   page.drawText('Total due: ₹ 1,234.50', { x: 48, y: 600, size: 12, font: arimo, color: rgb(0.15, 0.15, 0.15) })
   page.drawText('Invoice total: 1,234.50', { x: 48, y: 560, size: 12, font: calibri, color: rgb(0.15, 0.15, 0.15) })
+  page.drawText('Ref 2024-05', { x: 48, y: 520, size: 12, font: times, color: rgb(0.15, 0.15, 0.15) })
 })
 
 await writeFile(out, await doc.save())
