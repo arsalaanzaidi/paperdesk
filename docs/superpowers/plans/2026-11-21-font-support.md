@@ -100,6 +100,13 @@ The standard 14 stay only for runs already in them and for plain WinAnsi Add-tex
 - Carlito, Gelasio and Roboto have ₹; Caladea, Open Sans and Selawik don't, so ₹ falls back to Arimo there.
 - Left for 3b: reusing the PDF's own embedded subset, so edits use the original glyphs where it has them.
 
+## Phase 3b results (2026-11-21)
+
+- **Decided:** whole box, not per character or per word. A box uses the PDF's own font only when it has every character the box holds; otherwise the whole box uses the look-alike. Per-word fallback can't match between editor and export, because CSS falls back per character.
+- **Export:** reuses the font by reference, with no fontkit and no new font object. The editor shows pdf.js's own face for it, and the toolbar says "original font".
+- **Qualifying fonts:** only Type0 / Identity-H / CIDFontType2 with ToUnicode. Simple TrueType, Type1, Type3 and CFF fonts still use the look-alike.
+- **Checked on a real Word-style PDF** (fonts inside a form XObject, glyph IDs kept with empty outlines, space mapped to U+00A0): all three Arial subsets qualified, all 76 runs were covered by their own font, and an edit stayed in the original font with the font-object count unchanged.
+
 ## Disagreements and unverified claims
 
 - Liberation Sans in pdfjs-dist: one report calls it open-licence, but its name table says GPL with an exception. Don't reuse it.
