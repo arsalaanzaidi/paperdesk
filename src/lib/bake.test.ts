@@ -5,6 +5,7 @@ import { PDFDocument, PDFDict, PDFName, StandardFonts } from 'pdf-lib'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { bakeOverlays, wrapLines } from './bake'
 import { faceUrl, type FaceId } from './fonts'
+import { subsetPdf } from './testFixtures'
 import type { TextBox } from './overlay'
 
 /** The bundled fonts, read from disk (the browser fetches them). */
@@ -176,6 +177,28 @@ describe('bakeOverlays with text the standard fonts cannot draw', () => {
   it('draws italic Selawik boxes upright, as Selawik has no italic', async () => {
     const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('Slanted?'), fontKey: 'selawik', italic: true }], opts)
     expect((await fontNames(out)).some((n) => /^Selawik(?!.*Italic)/.test(n))).toBe(true)
+  })
+
+  it("draws an edit-box in the PDF's own font when it has every character, embedding nothing", async () => {
+    const original = await subsetPdf('Total 1,234')
+    const before = await fontNames(original)
+    const box = { ...boxWith('Total 4,321'), coverColor: '#FFFFFF', sourceFont: 'ABCDEF+Arimo', fontKey: 'arimo' as const }
+    fromDisk.mockClear()
+    const out = await bakeOverlays(original, [box], opts)
+    expect(fromDisk).not.toHaveBeenCalled()
+    expect(await fontNames(out)).toEqual(before)
+    const doc = await pdfjs.getDocument({ data: out.slice(), useWorkerFetch: false, isEvalSupported: false }).promise
+    const { items } = await (await doc.getPage(1)).getTextContent()
+    const orig = items.find((i) => 'str' in i && i.str === 'Total 1,234')
+    const edit = items.find((i) => 'str' in i && i.str === 'Total 4,321')
+    expect(edit && 'fontName' in edit && orig && 'fontName' in orig && edit.fontName === orig.fontName).toBe(true)
+  })
+
+  it("uses the look-alike for the whole box when the PDF's font lacks a character", async () => {
+    const box = { ...boxWith('Totals 4,321'), coverColor: '#FFFFFF', sourceFont: 'ABCDEF+Arimo', fontKey: 'arimo' as const }
+    const out = await bakeOverlays(await subsetPdf('Total 1,234'), [box], opts)
+    expect((await fontNames(out)).filter((n) => n.startsWith('Arimo-Regular')).length).toBe(1)
+    expect(await extractText(out)).toContain('Totals 4,321')
   })
 
   it('loads no font for plain WinAnsi text', async () => {

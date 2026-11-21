@@ -14,7 +14,7 @@ export interface PageTextItem {
   italic: boolean
   /** The run's original fill colour (#RRGGBB), when the operator list says what it is. */
   color?: string
-  /** The run's font name without its subset tag ("Calibri-Bold"), when pdf.js knows it. */
+  /** The run's font name as pdf.js has it, subset tag included ("FAKOKM+Calibri-Bold"), when known. */
   baseFont?: string
 }
 
@@ -178,7 +178,7 @@ export async function extractTextItems(page: PDFPageProxy, OPS: OpCodes): Promis
     }
     const generic = content.styles[id]?.fontFamily ?? ''
     styleOf.set(id, guessStyle(font?.name ?? '', generic, font?.bold, font?.italic))
-    if (font?.name) nameOf.set(id, font.name.replace(/^[A-Z]{6}\+/, ''))
+    if (font?.name) nameOf.set(id, font.name)
   }
 
   return raw.flatMap((i, n) => {

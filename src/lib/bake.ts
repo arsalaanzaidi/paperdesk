@@ -1,5 +1,18 @@
-import { PDFDocument, rgb } from 'pdf-lib'
-import type { PDFFont } from 'pdf-lib'
+import {
+  PDFDocument,
+  PDFHexString,
+  rgb,
+  beginText,
+  endText,
+  popGraphicsState,
+  pushGraphicsState,
+  setFillingRgbColor,
+  setFontAndSize,
+  setTextMatrix,
+  showText,
+} from 'pdf-lib'
+import type { PDFFont, PDFName } from 'pdf-lib'
+import { findEmbeddedFont, type EmbeddedFont } from './embedded'
 import {
   type TextBox,
   standardFont,
@@ -85,17 +98,33 @@ export async function bakeOverlays(
     return face
   }
 
+  // The PDF's own fonts, reused by reference, per page and font name.
+  const embedded = new Map<string, EmbeddedFont | null>()
+  const embeddedKey = new Map<string, PDFName>()
+  const embeddedFor = (pageIndex: number, baseFont: string) => {
+    const key = `${pageIndex}:${baseFont}`
+    if (!embedded.has(key)) embedded.set(key, findEmbeddedFont(doc, pageIndex, baseFont))
+    return embedded.get(key) ?? null
+  }
+
   for (const box of boxes) {
     const text = box.text.normalize('NFC')
     if (!text.trim()) continue
     const page = pages[box.page]
     if (!page) continue
 
-    // Text the standard 14 can draw keeps them: nothing to download. Anything else is split into
-    // runs over the box's font chain, and a character no font has stops the export.
-    let fonts: PDFFont[]
-    let runsOf: (line: string) => TextRun[]
-    if (usesBundledFont({ ...box, text })) {
+    // An edit-box whose original font is embedded and has every character it now holds is drawn in
+    // that font: the original glyphs, nothing added. It's the whole box or nothing (never mixed).
+    const own = box.coverColor && box.sourceFont ? embeddedFor(box.page, box.sourceFont) : null
+    const exact = own?.covers(text) ? own : null
+
+    // Otherwise text the standard 14 can draw keeps them: nothing to download. Anything else is
+    // split into runs over the box's font chain, and a character no font has stops the export.
+    let fonts: PDFFont[] = []
+    let runsOf: (line: string) => TextRun[] = () => []
+    if (exact) {
+      // drawn below
+    } else if (usesBundledFont({ ...box, text })) {
       const faces = await Promise.all(fontChain(box).map(bundledFace))
       const covers = faces.map((f) => f.has)
       fonts = faces.map((f) => f.font)
@@ -136,6 +165,24 @@ export async function bakeOverlays(
     // Edit-boxes are single-line in the editor (no soft wrap), so only explicit newlines break here too.
     const lines = box.coverColor ? text.split('\n') : wrapLinesBy(text, widthOf, box.wPt)
     for (const line of lines) {
+      if (exact && line) {
+        const key = `${box.page}:${box.sourceFont}`
+        let fontName = embeddedKey.get(key)
+        if (!fontName) {
+          fontName = page.node.newFontDictionary('PdOwn', exact.ref)
+          embeddedKey.set(key, fontName)
+        }
+        page.pushOperators(
+          pushGraphicsState(),
+          beginText(),
+          setFillingRgbColor(r, g, b),
+          setFontAndSize(fontName, box.sizePt),
+          setTextMatrix(1, 0, 0, 1, box.xPt, y),
+          showText(PDFHexString.of(exact.hex(line))),
+          endText(),
+          popGraphicsState(),
+        )
+      }
       let x = box.xPt
       for (const run of runsOf(line)) {
         const font = fonts[run.font]

@@ -22,7 +22,7 @@ export interface TextBox {
   /** The bundled family to draw in (a look-alike of the original, or the user's pick). When set,
    *  it wins over the standard 14 even for WinAnsi text. `family` stays its generic class. */
   fontKey?: FontKey
-  /** Edit-boxes only: the original run's font name without its subset tag ("Calibri-Bold"). */
+  /** Edit-boxes only: the original run's font name, subset tag included ("FAKOKM+Calibri-Bold"). */
   sourceFont?: string
 }
 
