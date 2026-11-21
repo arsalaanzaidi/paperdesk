@@ -79,6 +79,13 @@ The standard 14 stay only for runs already in them and for plain WinAnsi Add-tex
 - Local fonts: fingerprinting, `[]` instead of an error on denial, and .ttc extraction.
 - Licences: RFN fonts must be renamed if modified, and fsType rules local and picked fonts.
 
+## Phase 1 results (2026-11-21)
+
+- **fontkit:** (c) chosen, fontkit 2.0.4 behind the `encodeStream` adapter. On all 12 fonts it gave the same output as @pdf-lib/fontkit 1.1.1: pdf.js text and widths exact, and correct renders in Poppler and Quick Look (Preview's engine). It is 149 KB gzip against 382 KB. Acrobat isn't installed here, so it is unchecked.
+- **₹** is in every Arimo and Tinos style; **Cousine has none**. So phase 1 already falls back per character from the box's font to Arimo (CSS stack in the editor, `splitRuns` at export), rather than switching whole boxes.
+- **Arimo matches macOS Arial's advance widths** for all 191 shared ASCII/Latin-1 characters in Regular, Italic and Bold Italic, and 190 in Bold (µ differs).
+- **Build checks:** all 12 fonts use long-format loca (the halving bug can't occur) and allow embedding.
+
 ## Disagreements and unverified claims
 
 - Liberation Sans in pdfjs-dist: one report calls it open-licence, but its name table says GPL with an exception. Don't reuse it.
