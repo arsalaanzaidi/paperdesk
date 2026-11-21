@@ -14,6 +14,8 @@ import {
 } from '../lib/overlay'
 import { getPageTextItems } from '../lib/pdf'
 import { hitTest, findBoxAt, type PageTextItem } from '../lib/textItems'
+import { needsBundledFont, fontChain, cssFontStack, faceLoaded, loadFace, type FaceId } from '../lib/fonts'
+import { loadFontkit } from '../lib/fontkit'
 
 interface Props {
   wPx: number
@@ -54,6 +56,15 @@ function cssBaselineRatio(family: string, weight: number, style: string, fontPx:
   const result = Number.isFinite(ratio) && ratio > 0 ? ratio : ASCENT_RATIO
   baselineCache.set(key, result)
   return result
+}
+
+/**
+ * The CSS stack of the bundled faces bake will draw this box with, once every one of them has
+ * loaded; null while the box is plain WinAnsi (standard 14 at export) or its faces are loading.
+ */
+function bundledStack(box: TextBox): string | null {
+  if (!needsBundledFont(box.text)) return null
+  return fontChain(box.family, box.bold, box.italic).every(faceLoaded) ? cssFontStack(box.family) : null
 }
 
 /** Dominant background colour around a run, read from the rendered page canvas. */
@@ -105,6 +116,32 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       cancelled = true
     }
   }, [doc, itemsKey, pageIndex])
+
+  // Boxes with text the standard 14 can't draw show the bundled faces bake will embed. Load them
+  // (and warm fontkit for the export) and re-render once they're in document.fonts.
+  const [, setFacesReady] = useState(0)
+  const missingFaces = [
+    ...new Set(
+      boxes.filter((b) => needsBundledFont(b.text)).flatMap((b) => fontChain(b.family, b.bold, b.italic)),
+    ),
+  ]
+    .filter((id) => !faceLoaded(id))
+    .sort()
+    .join(',')
+  useEffect(() => {
+    if (!missingFaces) return
+    let cancelled = false
+    loadFontkit().catch(() => {}) // export reports it if this fails
+    Promise.all(missingFaces.split(',').map((id) => loadFace(id as FaceId))).then(
+      () => {
+        if (!cancelled) setFacesReady((n) => n + 1)
+      },
+      () => {}, // the editor keeps the generic family; export asks for a reload
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [missingFaces])
 
   useEffect(() => {
     if (!selectedBoxId) return
@@ -227,6 +264,8 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       {boxes.map((box) => {
         const r = boxToScreen(box, zoom)
         const selected = selectedBoxId === box.id
+        const stack = bundledStack(box)
+        const family = stack ?? cssFamily(box.family)
         return (
           <div
             key={box.id}
@@ -247,7 +286,9 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
               contentEditable
               suppressContentEditableWarning
               style={{
-                fontFamily: cssFamily(box.family),
+                fontFamily: family,
+                // The bundled faces are registered per weight and style; never fake bold or italic.
+                fontSynthesis: stack ? 'none' : undefined,
                 fontSize: box.sizePt * zoom,
                 color: box.color,
                 fontWeight: box.bold ? 700 : 400,
@@ -255,7 +296,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
                 // Put the baseline where bake draws it, whatever this font's CSS metrics are.
                 transform: `translateY(${baselineShiftPx(
                   cssBaselineRatio(
-                    cssFamily(box.family),
+                    family,
                     box.bold ? 700 : 400,
                     box.italic ? 'italic' : 'normal',
                     box.sizePt * zoom,

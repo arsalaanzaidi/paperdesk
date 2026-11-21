@@ -727,6 +727,8 @@ button {
      exported PDF. Staying visible keeps the editor WYSIWYG with export. */
   overflow: visible;
   line-height: 1.15;
+  /* pdf-lib draws without kerning, so the editor doesn't kern either: line widths match. */
+  font-kerning: none;
 }
 
 /* Edit-boxes never soft-wrap: longer text extends right, matching bake. */
