@@ -288,6 +288,87 @@ try {
   const selectedText = await page.$eval('.text-box.selected .text-box-edit', (e) => e.innerText).catch(() => '')
   ok('repeat click selects the edited run', selectedText === EDIT_SENTINEL, `got "${selectedText}"`)
 
+  // --- Text the standard 14 fonts can't draw (₹): exported with the bundled fonts ---
+  // make-test-pdf embeds "Total due: ₹ 1,234.50" in Arimo on page 1 (baseline 600, so top-left y ≈ 242).
+  const RUPEE_RUN = 'Total due: ₹ 1,234.50'
+  const PREFILL_SENTINEL = 'PrefillSentinel'
+  const boxText = (t) => [...document.querySelectorAll('.text-box-edit')].some((e) => e.innerText.includes(t))
+  /** Wait until the box holding `text` is drawn in a font stack that includes `want` (Chrome drops the quotes). */
+  const boxFontIs = (text, want) =>
+    page
+      .waitForFunction(
+        (t, w) => {
+          const e = [...document.querySelectorAll('.text-box-edit')].find((x) => x.innerText.includes(t))
+          return !!e && getComputedStyle(e).fontFamily.replace(/"/g, '').includes(w)
+        },
+        { timeout: 6000 },
+        text,
+        want,
+      )
+      .then(() => true, () => false)
+
+  await clickRunAt(60, 238)
+  const rupeePrefilled = await page
+    .waitForFunction(
+      (t) => document.activeElement?.classList.contains('text-box-edit') && document.activeElement.innerText.includes(t),
+      { timeout: 4000 },
+      RUPEE_RUN,
+    )
+    .then(() => true, () => false)
+  ok(
+    'edit click on an embedded-font run with ₹ prefills a focused box',
+    rupeePrefilled,
+    JSON.stringify(
+      await page.evaluate(() => ({
+        boxes: [...document.querySelectorAll('.text-box-edit')].map((e) => e.innerText),
+        active: document.activeElement?.className,
+        tool: document.querySelector('.text-layer')?.className,
+      })),
+    ),
+  )
+  await page.keyboard.type(` ${PREFILL_SENTINEL}`) // the caret is at the end of the run
+  ok('the ₹ edit-box shows the bundled face it exports with (Arimo)', await boxFontIs(PREFILL_SENTINEL, 'pd-arimo'))
+  ok(
+    'edit boxes are not kerned, as pdf-lib draws them',
+    await page.$$eval('.text-box-edit', (els) => els.every((e) => getComputedStyle(e).fontKerning === 'none')),
+  )
+
+  // A mono box with ₹: Cousine lacks the glyph, so that one character falls back to Arimo.
+  await page.click('[data-testid="tool-text"]')
+  await clickRunAt(300, 400) // clear of the floating page controls
+  const monoFocused = await page
+    .waitForFunction(() => document.activeElement?.classList.contains('text-box-edit'), { timeout: 4000 })
+    .then(() => true, () => false)
+  ok(
+    'Add text makes a focused box below the ₹ edit',
+    monoFocused,
+    JSON.stringify(
+      await page.evaluate(() => ({
+        boxes: [...document.querySelectorAll('.text-box-edit')].map((e) => e.innerText),
+        active: `${document.activeElement?.tagName}.${document.activeElement?.className}`,
+        layer: document.querySelector('.text-layer')?.className,
+        pressed: document.querySelector('[data-testid="tool-text"]')?.className,
+      })),
+    ),
+  )
+  await page.keyboard.type('Mono ₹ 7')
+  await page.select('select[aria-label="Font family"]', 'mono')
+  ok('a mono box with ₹ shows Cousine, then Arimo', await boxFontIs('Mono ₹ 7', 'pd-cousine, pd-arimo'))
+
+  // A character no bundled font has: export refuses and names it, instead of drawing a blank glyph.
+  await clickRunAt(300, 460)
+  await page.waitForFunction(() => document.activeElement?.classList.contains('text-box-edit'), { timeout: 4000 })
+  await page.keyboard.type('Kanji 漢')
+  await page.click('button.primary')
+  const refusal = await page
+    .waitForFunction(() => document.querySelector('.statusbar')?.textContent.includes('漢 (U+6F22)'), { timeout: 8000 })
+    .then(() => true, () => false)
+  ok('export refuses a character no bundled font has, and names it', refusal, await page.$eval('.statusbar', (e) => e.textContent))
+  // Remove that box so the real export below goes through.
+  await clickRunAt(305, 470)
+  await page.click('button[aria-label="Delete text box"]')
+  ok('the refused box can be deleted', !(await page.evaluate(boxText, 'Kanji')))
+
   // Export PDF: capture the download.
   const client = await page.createCDPSession()
   await client.send('Page.setDownloadBehavior', {
@@ -334,6 +415,8 @@ try {
     }
     ok('exported PDF text contains the added-text sentinel', allText.includes(SENTINEL))
     ok('exported PDF text contains the edit sentinel', allText.includes(EDIT_SENTINEL))
+    ok('exported PDF keeps the prefilled ₹ edit and its new text', allText.includes(`${RUPEE_RUN} ${PREFILL_SENTINEL}`))
+    ok('exported PDF has the mono ₹ box', allText.replace(/\s+/g, ' ').includes('Mono ₹ 7'))
   }
 
   // Phone: an iPhone-sized touch page. The header was one non-wrapping row 671px wide, which

@@ -1,12 +1,17 @@
 // Generates a 3-page A4 test PDF with distinct text on each page.
 // Usage: node scripts/make-test-pdf.mjs <outPath>
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
-import { writeFile } from 'node:fs/promises'
+import * as fontkit from 'fontkit'
+import { readFile, writeFile } from 'node:fs/promises'
 
 const out = process.argv[2] || 'test.pdf'
 const doc = await PDFDocument.create()
 const font = await doc.embedFont(StandardFonts.HelveticaBold)
 const body = await doc.embedFont(StandardFonts.Helvetica)
+// A run in an embedded font with a character the standard 14 can't draw, like a real-world PDF.
+// Embedded whole (subset: false), so this script needs none of the app's fontkit adapter.
+doc.registerFontkit(fontkit)
+const arimo = await doc.embedFont(await readFile(new URL('../src/assets/fonts/Arimo-Regular.ttf', import.meta.url)))
 
 const pages = [
   { title: 'Quarterly Report', color: rgb(0.23, 0.29, 0.88) },
@@ -32,6 +37,8 @@ pages.forEach((p, i) => {
     font: body,
     color: rgb(0.15, 0.15, 0.15),
   })
+  // On every page, like the sentence: the smoke test deletes a page before it edits text.
+  page.drawText('Total due: ₹ 1,234.50', { x: 48, y: 600, size: 12, font: arimo, color: rgb(0.15, 0.15, 0.15) })
 })
 
 await writeFile(out, await doc.save())
