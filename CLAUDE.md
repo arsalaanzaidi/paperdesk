@@ -88,6 +88,8 @@ Before every commit or push, run `git config user.email` from inside the repo. I
 
 The app is live at https://paperdesk.pentaglobe.in/ as an assets-only Cloudflare Worker (`paperdesk`, in the personal Cloudflare account). Workers Builds deploys every push to `master`: it runs `yarn build`, then `npx wrangler deploy`, which uploads `dist/` with the settings in `wrangler.jsonc`. Those settings serve it on the custom domain only (no `workers.dev` or preview URLs), and anything that isn't a built file is a 404. `public/_headers` sends `X-Robots-Tag: noindex`; Vite copies it to the root of `dist/`, where Cloudflare reads it as config instead of serving it.
 
+The same build also goes to GitHub Pages (https://arsalaanzaidi.github.io/paperdesk/), which is the canonical address for search engines (`index.html` links to it). `public/googleec295745fcb3e739.html` is Google Search Console's ownership check for that address: never delete or edit it, or the site becomes unverified.
+
 Don't run `cf build`, `cf dev` or `cf deploy` in this repo. With no `cloudflare.config.ts`, `cf` runs automatic configuration, which ignores `wrangler.jsonc` and can install packages and rewrite files.
 
 ## Constraints worth knowing
