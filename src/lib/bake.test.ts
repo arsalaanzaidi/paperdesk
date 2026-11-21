@@ -165,6 +165,19 @@ describe('bakeOverlays with text the standard fonts cannot draw', () => {
     expect(lineTops.size).toBeGreaterThan(1)
   })
 
+  it('draws a box matched to a look-alike in that font, even for plain WinAnsi text', async () => {
+    const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('Quarterly totals'), fontKey: 'carlito', bold: true }], opts)
+    const names = await fontNames(out)
+    expect(names.some((n) => n.startsWith('Carlito-Bold'))).toBe(true)
+    expect(names.some((n) => n.startsWith('Helvetica'))).toBe(false)
+    expect(await extractText(out)).toContain('Quarterly totals')
+  })
+
+  it('draws italic Selawik boxes upright, as Selawik has no italic', async () => {
+    const out = await bakeOverlays(await blankPdf(), [{ ...boxWith('Slanted?'), fontKey: 'selawik', italic: true }], opts)
+    expect((await fontNames(out)).some((n) => /^Selawik(?!.*Italic)/.test(n))).toBe(true)
+  })
+
   it('loads no font for plain WinAnsi text', async () => {
     fromDisk.mockClear()
     await bakeOverlays(await blankPdf(), [boxWith('café — “quoted” €5')], opts)

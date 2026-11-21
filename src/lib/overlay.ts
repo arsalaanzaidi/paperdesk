@@ -1,4 +1,5 @@
 import { StandardFonts } from 'pdf-lib'
+import type { FontKey } from './fonts'
 
 export type Family = 'sans' | 'serif' | 'mono'
 
@@ -18,6 +19,11 @@ export interface TextBox {
   /** Edit-boxes only: hex fill drawn at the box bounds before the text at bake time.
    *  Visual cover only — the original glyphs stay in the file (not redaction). */
   coverColor?: string
+  /** The bundled family to draw in (a look-alike of the original, or the user's pick). When set,
+   *  it wins over the standard 14 even for WinAnsi text. `family` stays its generic class. */
+  fontKey?: FontKey
+  /** Edit-boxes only: the original run's font name without its subset tag ("Calibri-Bold"). */
+  sourceFont?: string
 }
 
 let _idCounter = 0

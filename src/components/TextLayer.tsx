@@ -14,7 +14,7 @@ import {
 } from '../lib/overlay'
 import { getPageTextItems } from '../lib/pdf'
 import { hitTest, findBoxAt, type PageTextItem } from '../lib/textItems'
-import { needsBundledFont, fontChain, cssFontStack, faceLoaded, loadFace, type FaceId } from '../lib/fonts'
+import { usesBundledFont, fontChain, cssFontStack, faceLoaded, loadFace, matchFont, FAMILIES, type FaceId } from '../lib/fonts'
 import { loadFontkit } from '../lib/fontkit'
 
 interface Props {
@@ -63,8 +63,8 @@ function cssBaselineRatio(family: string, weight: number, style: string, fontPx:
  * loaded; null while the box is plain WinAnsi (standard 14 at export) or its faces are loading.
  */
 function bundledStack(box: TextBox): string | null {
-  if (!needsBundledFont(box.text)) return null
-  return fontChain(box.family, box.bold, box.italic).every(faceLoaded) ? cssFontStack(box.family) : null
+  if (!usesBundledFont(box)) return null
+  return fontChain(box).every(faceLoaded) ? cssFontStack(box) : null
 }
 
 /** Dominant background colour around a run, read from the rendered page canvas. */
@@ -122,7 +122,7 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
   const [, setFacesReady] = useState(0)
   const missingFaces = [
     ...new Set(
-      boxes.filter((b) => needsBundledFont(b.text)).flatMap((b) => fontChain(b.family, b.bold, b.italic)),
+      boxes.filter(usesBundledFont).flatMap((b) => fontChain(b)),
     ),
   ]
     .filter((id) => !faceLoaded(id))
@@ -207,6 +207,8 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       return
     }
     const coverColor = sampleCover(canvasRef.current, hit, zoom)
+    // Draw the replacement in the original font's look-alike when one is bundled (Calibri → Carlito).
+    const { fontKey } = matchFont(hit.baseFont ?? '')
     addTextBox({
       page: pageIndex,
       xPt: hit.xPt,
@@ -214,7 +216,9 @@ export default function TextLayer({ wPx, hPx, canvasRef }: Props) {
       wPt: hit.wPt,
       hPt: hit.hPt,
       text: hit.str,
-      family: hit.family,
+      family: fontKey ? FAMILIES[fontKey].generic : hit.family,
+      ...(fontKey && { fontKey }),
+      ...(hit.baseFont && { sourceFont: hit.baseFont }),
       sizePt: hit.sizePt,
       color: hit.color ?? contrastText(coverColor), // original run colour when the op list told us
       bold: hit.bold,

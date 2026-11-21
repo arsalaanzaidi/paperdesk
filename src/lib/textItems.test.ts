@@ -199,4 +199,10 @@ describe('extractTextItems (real pdf-lib → pdf.js round trip)', () => {
     expect(italic).toMatchObject({ family: 'serif', bold: false, italic: true })
     expect(mono).toMatchObject({ family: 'mono', bold: false, italic: false })
   })
+
+  it("carries each run's font name, without a subset tag, so edits can be matched to a look-alike", async () => {
+    const { page } = await samplePage()
+    const [title, italic, mono] = await extractTextItems(page, pdfjs.OPS)
+    expect([title.baseFont, italic.baseFont, mono.baseFont]).toEqual(['Helvetica-Bold', 'Times-Italic', 'Courier'])
+  })
 })

@@ -9,7 +9,7 @@ import {
 } from './overlay'
 import {
   type FaceId,
-  needsBundledFont,
+  usesBundledFont,
   fontChain,
   loadFontBytes as fetchFontBytes,
   FontsUnavailableError,
@@ -95,8 +95,8 @@ export async function bakeOverlays(
     // runs over the box's font chain, and a character no font has stops the export.
     let fonts: PDFFont[]
     let runsOf: (line: string) => TextRun[]
-    if (needsBundledFont(text)) {
-      const faces = await Promise.all(fontChain(box.family, box.bold, box.italic).map(bundledFace))
+    if (usesBundledFont({ ...box, text })) {
+      const faces = await Promise.all(fontChain(box).map(bundledFace))
       const covers = faces.map((f) => f.has)
       fonts = faces.map((f) => f.font)
       runsOf = (line) => splitRuns(line, covers)
